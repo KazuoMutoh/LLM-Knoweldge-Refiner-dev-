@@ -47,7 +47,7 @@ if __name__ == '__main__':
     num_epochs = 100
     """"""
 
-    # create workind directory
+    # create working directory
     if not os.path.exists(dir_working):
         os.makedirs(dir_working, exist_ok=True)
     
