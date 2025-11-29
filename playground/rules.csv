@@ -1,0 +1,4 @@
+body,head,support,std_conf,pca_conf,head_coverage,body_size,pca_body_size,raw
+?a	/people/person/place_of_birth	?c	?c	/location/location/contains	?b,?a	/people/person/nationality	?b,,,,,,,
+?a	/people/person/place_of_birth	?c	?c	/location/administrative_division/country	?b,?a	/people/person/nationality	?b,,,,,,,
+?a	/people/person/place_of_birth	?c	?c	/location/location/part_of	?b,?a	/people/person/nationality	?b,,,,,,,

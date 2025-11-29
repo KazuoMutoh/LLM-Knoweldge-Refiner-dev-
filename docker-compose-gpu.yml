@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile-gpu
+    container_name: dev_container_gpu
+    volumes:
+      - .:/app        # ホストのコードをコンテナにマウント
+    tty: true         # 対話的に使えるようにする
+    environment:
+      - PYTHONUNBUFFERED=1
+    gpus: all    # GPUを使用可能にする

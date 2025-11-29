@@ -1,0 +1,40 @@
+# Python 3.9 + CUDA
+
+numpy>=1.24,<2.0
+scipy>=1.11,<1.12
+pandas>=2.0,<2.2
+
+# KG embedding stack (3.9 compatible)
+pykeen==1.10.2
+class-resolver>=0.4.3,<0.5
+typing_extensions>=4.5,<5.0
+
+# PyTorch + CUDA (select cu117 / cu118 as needed)
+#torch==2.0.1+cu118
+#torchvision==0.15.2+cu118
+#torchaudio==2.0.2+cu118
+
+# PyTorch + CPU
+#torch==2.0.1
+#torchvision==0.15.2
+#torchaudio==2.0.2
+# Note: Replace above 3 lines with +cu117 if using cu117
+
+click>=8.0,<9.0
+pathlib ; python_version < "3.10"
+
+networkx>=3.0,<4.0
+matplotlib>=3.8,<3.9
+
+pytest>=7.0,<8.0
+pyyaml>=6.0,<7.0
+requests>=2.31,<3.0
+
+pyvis
+langchain_core
+langchain_openai
+chromadb>=0.4.0,<0.5.0
+tiktoken>=0.5.0,<0.6.0
+rank-bm25>=0.2.2,<0.3.0
+pydantic>=2.0,<3.0
+tqdm>=4.65.0,<5.0

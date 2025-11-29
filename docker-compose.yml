@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: dev_script_env
+    volumes:
+      - .:/app        # ホストのコードをコンテナにマウント
+    tty: true         # 対話的に使えるようにする
+    environment:
+      - PYTHONUNBUFFERED=1
