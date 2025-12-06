@@ -10,6 +10,7 @@ from typing import List, Tuple
 from simple_active_refine.embedding import KnowledgeGraphEmbedding
 from simple_active_refine.amie import AmieRules
 from simple_active_refine.util import get_logger
+from simple_active_refine.rule_history import RuleEvaluationRecord
 
 
 logger = get_logger('analyzer')
@@ -190,3 +191,71 @@ class ScoreVraiationAnalyzer:
             fout.write(md_text)
 
         return md_text
+
+
+class RuleWiseAnalyzer:
+    """ルールごとの独立した評価を行うアナライザー
+    
+    単一ルールが特定のtarget tripleセットに対してトリプルを追加した結果、
+    スコアがどのように変化したかを評価し、RuleEvaluationRecordを生成する。
+    """
+    
+    def __init__(self, kge_before: KnowledgeGraphEmbedding, kge_after: KnowledgeGraphEmbedding):
+        """RuleWiseAnalyzerの初期化
+        
+        Args:
+            kge_before: トリプル追加前の埋込モデル
+            kge_after: トリプル追加後の埋込モデル
+        """
+        self.kge_before = kge_before
+        self.kge_after = kge_after
+    
+    def create_evaluation_record(self,
+                                 iteration: int,
+                                 rule_id: str,
+                                 rule,
+                                 target_triples: List[Tuple],
+                                 added_triples: List[Tuple]) -> RuleEvaluationRecord:
+        """ルールの評価記録を作成
+        
+        Args:
+            iteration: iteration番号
+            rule_id: ルールID
+            rule: AmieRuleオブジェクト
+            target_triples: 対象となったトリプルのリスト
+            added_triples: 追加されたトリプルのリスト
+        
+        Returns:
+            RuleEvaluationRecord: 評価記録
+        """
+        # トリプル追加前後のスコアを計算
+        scores_before = self.kge_before.score_triples(target_triples)
+        scores_after = self.kge_after.score_triples(target_triples)
+        
+        # スコア変化の計算
+        score_changes = [after - before for before, after in zip(scores_before, scores_after)]
+        
+        # 統計値の計算
+        import statistics
+        mean_score_change = statistics.mean(score_changes) if score_changes else 0.0
+        std_score_change = statistics.stdev(score_changes) if len(score_changes) > 1 else 0.0
+        
+        positive_changes = sum(1 for sc in score_changes if sc > 0)
+        negative_changes = sum(1 for sc in score_changes if sc < 0)
+        
+        logger.info(f"Rule {rule_id}: mean_Δ={mean_score_change:.6f}, "
+                   f"pos={positive_changes}, neg={negative_changes}, "
+                   f"added={len(added_triples)}")
+        
+        return RuleEvaluationRecord(
+            iteration=iteration,
+            rule_id=rule_id,
+            rule=rule,
+            target_triples=target_triples,
+            added_triples=added_triples,
+            score_changes=score_changes,
+            mean_score_change=mean_score_change,
+            std_score_change=std_score_change,
+            positive_changes=positive_changes,
+            negative_changes=negative_changes
+        )

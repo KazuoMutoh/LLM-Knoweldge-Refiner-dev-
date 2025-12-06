@@ -344,6 +344,93 @@ def randomly_select_triples(target_triple: Triple, candidate_triples: List[Tripl
     connected = [t for t in candidate_triples if head in t or tail in t]
     return random.sample(connected, min(n, len(connected)))
 
+
+def add_triples_for_single_rule(dir_triples: str,
+                                rule: Union[AmieRules, List[Rule]],
+                                target_triples: List[Triple],
+                                f_candidate_triples: Optional[str] = None,
+                                f_org_triples: Optional[str] = None) -> Tuple[List[Triple], Dict]:
+    """単一ルールを用いて指定されたtarget tripleセットに対してトリプルを追加
+    
+    Args:
+        dir_triples: トリプルデータディレクトリ
+        rule: 適用するルール（単一AmieRuleまたは単一要素のAmieRules/List）
+        target_triples: 対象となるトリプルのリスト
+        f_candidate_triples: 候補トリプルファイルパス（Noneの場合はdir_triples/train_removed.txt）
+        f_org_triples: 元トリプルファイルパス（Noneの場合はdir_triples/train.txt）
+    
+    Returns:
+        Tuple[List[Triple], Dict]: (追加されたトリプルのリスト, 詳細情報の辞書)
+    """
+    # ファイルパス設定
+    if f_candidate_triples is None:
+        f_candidate_triples = os.path.join(dir_triples, 'train_removed.txt')
+    if not os.path.exists(f_candidate_triples):
+        raise Exception(f'{f_candidate_triples} cannot be found in {dir_triples}')
+    
+    if f_org_triples is None:
+        f_org_triples = os.path.join(dir_triples, 'train.txt')
+    if not os.path.exists(f_org_triples):
+        raise Exception(f'{f_org_triples} cannot be found in {dir_triples}.')
+    
+    # ルールの正規化（単一ルールに変換）
+    if isinstance(rule, AmieRules):
+        if len(rule.rules) != 1:
+            raise ValueError(f"Expected single rule, got {len(rule.rules)} rules")
+        single_rule = [rule.rules[0]]
+    elif isinstance(rule, list):
+        if len(rule) != 1:
+            raise ValueError(f"Expected single rule, got {len(rule)} rules")
+        single_rule = rule
+    else:
+        # AmieRule単体の場合
+        single_rule = [rule]
+    
+    logger.info(f'Applying single rule to {len(target_triples)} target triples')
+    
+    # 候補トリプルの読み込み
+    tf = TriplesFactory.from_path(f_candidate_triples)
+    set_candidate_triples = set(map(tuple, tf.triples.tolist()))
+    logger.info(f'Number of candidate triples: {len(set_candidate_triples)}')
+    
+    # 元トリプルの読み込み
+    tf = TriplesFactory.from_path(f_org_triples)
+    set_org_triples = set(map(tuple, tf.triples.tolist()))
+    logger.info(f'Number of original triples: {len(set_org_triples)}')
+    
+    # トリプル追加処理
+    triples_to_be_added_by_target = []
+    set_triples_to_be_added = set()
+    
+    for triple in tqdm(target_triples, desc="Processing target triples"):
+        logger.debug(f'Processing triple: {triple} ...')
+        _triples_to_be_added = find_body_triples_for_head(triple, single_rule, set_candidate_triples)
+        
+        triples_to_be_added_by_target.append({
+            'target_triple': triple,
+            'triples_to_be_added': _triples_to_be_added
+        })
+        set_triples_to_be_added |= set(_triples_to_be_added)
+    
+    # 関連トリプルの追加
+    for triple in set_triples_to_be_added:
+        h, r, t = triple
+        related_triples = [tr for tr in set_candidate_triples if h in tr or t in tr]
+        set_triples_to_be_added |= set(related_triples)
+    
+    logger.info(f'{len(set_triples_to_be_added)} triples will be added.')
+    
+    # 詳細情報
+    details = {
+        'target_triples': target_triples,
+        'added_triples_by_target': triples_to_be_added_by_target,
+        'total_added': len(set_triples_to_be_added),
+        'num_targets': len(target_triples)
+    }
+    
+    return list(set_triples_to_be_added), details
+
+
 # TODO クラスとして実装する
 def add_triples_based_on_rules(dir_triples:str, 
                                dir_updated_triples:str,

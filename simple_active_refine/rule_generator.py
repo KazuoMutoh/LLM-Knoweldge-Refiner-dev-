@@ -342,3 +342,116 @@ class BaseRuleGenerator:
                 continue
 
         return AmieRules(rules=out)
+    
+    def generate_initial_rule_pool(self,
+                                   knowledge_graph: str,
+                                   target_relation: str,
+                                   n_rules: int = 20,
+                                   list_relations=None,
+                                   ref_rules: AmieRules = None) -> AmieRules:
+        """初期ルールpoolを生成
+        
+        より多くのルール候補を生成し、多腕バンディット戦略で選択できるようにする。
+        
+        Args:
+            knowledge_graph: 知識グラフ名
+            target_relation: 対象リレーション
+            n_rules: 生成するルール数（デフォルト20）
+            list_relations: 使用可能なリレーションのリスト
+            ref_rules: 参考となるAMIE+ルール
+            
+        Returns:
+            AmieRules: 生成されたルール集合
+        """
+        logger.info(f"Generating initial rule pool with {n_rules} rules")
+        
+        # generate_rulesを使用してルールを生成
+        rules = self.generate_rules(
+            knowledge_graph=knowledge_graph,
+            target_relation=target_relation,
+            n_rules=n_rules,
+            list_relations=list_relations,
+            ref_rules=ref_rules
+        )
+        
+        logger.info(f"Generated {len(rules.rules)} rules for the initial pool")
+        return rules
+    
+    def update_rule_pool_with_history(self,
+                                      knowledge_graph: str,
+                                      target_relation: str,
+                                      current_pool: AmieRules,
+                                      history,
+                                      n_keep_best: int = 10,
+                                      n_generate_new: int = 5,
+                                      ref_rules: AmieRules = None) -> AmieRules:
+        """履歴に基づいてルールpoolを更新
+        
+        1. 履歴から各ルールの効果を評価
+        2. 効果的なルールを保持
+        3. 効果の低いルールを削除
+        4. 新しいルールを生成して追加
+        
+        Args:
+            knowledge_graph: 知識グラフ名
+            target_relation: 対象リレーション
+            current_pool: 現在のルールpool
+            history: RuleHistoryオブジェクト
+            n_keep_best: 保持する上位ルール数
+            n_generate_new: 新規生成するルール数
+            ref_rules: 参考となるAMIE+ルール
+            
+        Returns:
+            AmieRules: 更新されたルールpool
+        """
+        from simple_active_refine.rule_selector import RuleWithId
+        
+        logger.info(f"Updating rule pool with history (keep={n_keep_best}, new={n_generate_new})")
+        
+        # 履歴のサマリーレポートを生成
+        summary_report = history.generate_summary_report()
+        
+        # 全ルールの統計情報を取得
+        all_stats = history.get_all_rule_statistics()
+        
+        # ルールを効果順にソート
+        rule_performance = []
+        for rule in current_pool.rules:
+            # ルールIDの特定（metadataに保存されていると仮定）
+            rule_id = rule.metadata.get('rule_id', None) if rule.metadata else None
+            if rule_id and rule_id in all_stats:
+                stats = all_stats[rule_id]
+                rule_performance.append((rule, stats.mean_score_change, rule_id))
+            else:
+                # 未評価のルールは中立的なスコア
+                rule_performance.append((rule, 0.0, rule_id))
+        
+        # スコアでソート
+        rule_performance.sort(key=lambda x: x[1], reverse=True)
+        
+        # 上位ルールを保持
+        best_rules = [rp[0] for rp in rule_performance[:n_keep_best]]
+        
+        logger.info(f"Keeping top {len(best_rules)} performing rules:")
+        for i, (rule, score, rule_id) in enumerate(rule_performance[:n_keep_best], 1):
+            logger.info(f"  {i}. {rule_id}: mean_Δ={score:.6f}")
+        
+        # 新しいルールを生成
+        # 履歴情報を使ってLLMに改善を促す
+        prompt_addition = f"\n\nHISTORICAL PERFORMANCE SUMMARY:\n{summary_report}\n\n"
+        prompt_addition += "Generate rules that are likely to perform better than the poorly performing rules above."
+        
+        # 一時的にプロンプトを拡張（簡易的な実装）
+        new_rules = self.generate_rules(
+            knowledge_graph=knowledge_graph,
+            target_relation=target_relation,
+            n_rules=n_generate_new,
+            ref_rules=ref_rules
+        )
+        
+        # ルールpoolを結合
+        updated_rules = best_rules + new_rules.rules
+        
+        logger.info(f"Updated pool: {len(best_rules)} kept + {len(new_rules.rules)} new = {len(updated_rules)} total")
+        
+        return AmieRules(rules=updated_rules)
