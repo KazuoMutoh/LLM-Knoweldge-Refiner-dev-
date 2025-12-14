@@ -377,6 +377,54 @@ class BaseRuleGenerator:
         logger.info(f"Generated {len(rules.rules)} rules for the initial pool")
         return rules
     
+    def create_initial_rule_pool_from_amie(self,
+                                          amie_rules: AmieRules,
+                                          n_rules: int = 20,
+                                          sort_by: str = 'support') -> AmieRules:
+        """AMIE+ルールから初期ルールpoolを作成
+        
+        AMIE+で抽出されたルールから有望なものを選択して初期プールとする。
+        bodyに/people/person/nationalityを含むルールも許可する。
+        
+        Args:
+            amie_rules: AMIE+で抽出されたルール集合
+            n_rules: プールに含めるルール数
+            sort_by: ソート基準 ('support', 'pca_conf', 'std_conf', 'head_coverage')
+            
+        Returns:
+            AmieRules: 選択されたルール集合
+        """
+        logger.info(f"Creating initial rule pool from AMIE+ rules (selecting top {n_rules} by {sort_by})")
+        
+        if not amie_rules or not amie_rules.rules:
+            logger.warning("No AMIE+ rules provided, returning empty pool")
+            return AmieRules(rules=[])
+        
+        # DataFrameに変換してソート
+        df = amie_rules.to_dataframe()
+        
+        # ソート基準の列が存在するか確認
+        if sort_by not in df.columns:
+            logger.warning(f"Sort column '{sort_by}' not found, using first available metric")
+            # 利用可能なメトリクスを探す
+            for col in ['support', 'pca_conf', 'std_conf', 'head_coverage']:
+                if col in df.columns:
+                    sort_by = col
+                    break
+        
+        # ソート（降順）してトップN個を選択
+        df_sorted = df.sort_values(by=sort_by, ascending=False)
+        top_indices = df_sorted.head(n_rules).index.tolist()
+        
+        selected_rules = [amie_rules.rules[i] for i in top_indices]
+        
+        logger.info(f"Selected {len(selected_rules)} rules from AMIE+ (sorted by {sort_by})")
+        for i, rule in enumerate(selected_rules[:5], 1):  # 最初の5つをログ出力
+            metrics = f"support={rule.support}, pca_conf={rule.pca_conf:.3f}" if rule.support else "no metrics"
+            logger.info(f"  {i}. {rule.head.p} <- {len(rule.body)} body atoms ({metrics})")
+        
+        return AmieRules(rules=selected_rules)
+    
     def update_rule_pool_with_history(self,
                                       knowledge_graph: str,
                                       target_relation: str,

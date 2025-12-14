@@ -137,6 +137,10 @@ class LLMPolicyRuleSelector(RuleSelector):
         """
         all_stats = self.history.get_all_rule_statistics()
         
+        # デバッグ: 履歴の内容を確認
+        logger.info(f"History has {len(self.history.records)} total records")
+        logger.info(f"History tracked {len(all_stats)} rules with statistics")
+        
         lines = []
         lines.append("## Current Rule Pool Statistics\n")
         
@@ -246,6 +250,33 @@ Provide a JSON with:
         if len(rule_pool) <= k:
             logger.info(f"Pool size ({len(rule_pool)}) <= k ({k}), selecting all rules")
             return rule_pool, self.current_policy
+        
+        # iteration=0の場合、pca_confが高い順に選択（探索的な初期選択）
+        if iteration == 0:
+            logger.info(f"Iteration 0: Selecting top {k} rules by pca_conf (AMIE+ confidence)")
+            
+            # pca_confでソート（降順）
+            sorted_rules = sorted(
+                rule_pool,
+                key=lambda r: r.rule.pca_conf if r.rule.pca_conf is not None else -1,
+                reverse=True
+            )
+            
+            selected = sorted_rules[:k]
+            
+            for i, rule_with_id in enumerate(selected, 1):
+                pca_conf = rule_with_id.rule.pca_conf if rule_with_id.rule.pca_conf is not None else 0.0
+                logger.info(f"  Selected: {rule_with_id.rule_id} (rank {i}, pca_conf={pca_conf:.4f})")
+            
+            # 初期ポリシーを設定
+            if self.current_policy is None:
+                self.current_policy = (
+                    "Initial iteration: Selected top rules by AMIE+ PCA confidence to explore "
+                    "high-quality patterns. In subsequent iterations, we will adapt based on "
+                    "observed performance and balance exploration with exploitation."
+                )
+            
+            return selected, self.current_policy
         
         # プロンプト生成
         prompt = self._create_selection_prompt(rule_pool, k, iteration)

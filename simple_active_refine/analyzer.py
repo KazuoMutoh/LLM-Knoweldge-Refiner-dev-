@@ -232,8 +232,29 @@ class RuleWiseAnalyzer:
         scores_before = self.kge_before.score_triples(target_triples)
         scores_after = self.kge_after.score_triples(target_triples)
         
+        # Filter out None values (skipped triples)
+        valid_pairs = [(b, a) for b, a in zip(scores_before, scores_after) if b is not None and a is not None]
+        
+        if not valid_pairs:
+            logger.warning(f"Rule {rule_id}: No valid triples to evaluate (all skipped)")
+            # Return a default evaluation record with 0 score change
+            return RuleEvaluationRecord(
+                iteration=iteration,
+                rule_id=rule_id,
+                rule=rule,
+                target_triples=target_triples,
+                added_triples=added_triples,
+                mean_score_change=0.0,
+                std_score_change=0.0,
+                positive_changes=0,
+                negative_changes=0
+            )
+        
+        scores_before_valid = [b for b, a in valid_pairs]
+        scores_after_valid = [a for b, a in valid_pairs]
+        
         # スコア変化の計算
-        score_changes = [after - before for before, after in zip(scores_before, scores_after)]
+        score_changes = [after - before for before, after in zip(scores_before_valid, scores_after_valid)]
         
         # 統計値の計算
         import statistics

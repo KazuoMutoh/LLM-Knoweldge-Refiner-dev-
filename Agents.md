@@ -2,6 +2,8 @@
 
 このドキュメントでは、LLM Knowledge Refinerプロジェクトにおける各エージェント（モジュール）の役割と責務を説明します。
 
+このドキュメントは、アルゴリズムの変更やコードの変更の際に、適宜改変してください。
+
 ---
 
 ## 概要
@@ -78,11 +80,12 @@
 
 ### 3. BaseRuleGenerator (`simple_active_refine/rule_generator.py`)
 
-**役割**: LLMを用いた情報取得ルールの生成と更新
+**役割**: LLMを用いた情報取得ルールの生成と更新、およびAMIE+ルールからの初期プール作成
 
 **主な機能**:
 - LLM（GPT-4o）によるHornルールの生成
 - AMIE+抽出ルールを参考情報として活用
+- **AMIE+ルールから直接初期プールを作成**（新機能）
 - スコア変化に基づくルールの更新
 - 出力の構造化（Pydanticモデルによる厳密なスキーマ制約）
 
@@ -97,17 +100,20 @@
 - AmieRuleオブジェクトのリスト
 
 **主要メソッド**:
-- `generate_rules()`: 初期ルールの生成
+- `generate_rules()`: LLMによるルールの生成
 - `update_rules()`: スコア変化に基づくルールの更新
+- `create_initial_rule_pool_from_amie()`: AMIE+ルールから初期プールを作成（新規）
 
 **プロンプト設計**:
 - Hornルール形式の厳密な指定
-- 対象リレーションをbodyに含めない制約
+- ~~対象リレーションをbodyに含めない制約~~（削除：実データの頻出パターンを優先）
 - 高精度・解釈可能性を重視したルール生成の指示
 
 **備考**:
 - リトライ機構（指数バックオフ）により安定した実行を実現
 - 構造化出力により、パース エラーを最小化
+- **AMIE+ルールを直接使用することで、実データに基づく有望なパターンを活用**
+- **bodyに`/people/person/nationality`を含むルールも許可（実際に頻出するパターンのため）**
 
 ---
 
@@ -239,7 +245,46 @@
 
 ---
 
-### 8. AMIE+ Integration (`simple_active_refine/amie.py`)
+### 8. IterationEvaluator (`simple_active_refine/evaluation.py`)
+
+**役割**: 各iterationでの改善効果の定量評価と最終統合レポート生成
+
+**主な機能**:
+- 対象トリプルのスコア変化計算
+- 追加トリプル数の記録
+- 知識グラフ埋め込み全体の精度評価（Hits@k、MRR）
+- iteration単位の評価レポート生成
+- 全iteration統合レポートとグラフ生成
+
+**入力**:
+- トリプル追加前後の埋め込みモデル
+- 対象トリプルリスト
+- 追加トリプル数
+
+**出力**:
+- IterationMetrics（iteration単位の評価指標）
+- iteration評価レポート（JSON、Markdown）
+- 最終統合レポート（Markdown、グラフ）
+
+**主要メソッド**:
+- `evaluate_iteration()`: 単一iterationの評価
+- `create_final_report()`: 最終統合レポートの生成
+- `_create_plots()`: 評価グラフの生成
+- `_create_markdown_report()`: Markdownレポートの生成
+
+**評価指標**:
+- **トリプル数**: 追加前後のトリプル数、追加数
+- **対象トリプルスコア**: 平均スコア、変化量
+- **KG埋め込み精度**: Hits@1/3/10、MRR、各変化量
+
+**備考**:
+- 全iteration履歴の可視化
+- 追加トリプル数と精度改善の関係分析
+- 相対的な改善率の計算
+
+---
+
+### 9. AMIE+ Integration (`simple_active_refine/amie.py`)
 
 **役割**: AMIE+ツールとの連携とHornルールの管理
 
@@ -277,21 +322,22 @@ for i in 1 to n_iter:
     1. KnowledgeGraphEmbedding.train_model()
        └─> 知識グラフ埋込モデルの学習
     
-    2. RuleExtractor.extract_rules_from_high_score_triples()
-       └─> 高スコアトリプルからAMIE+ルールを抽出
+    2. RuleExtractor.extract_rules_from_entire_graph()
+       └─> 知識グラフ全体からAMIE+ルールを抽出
+       └─> (初回のみ) 抽出したルールから初期プールを作成
     
-    3. BaseRuleGenerator.generate_rules() or update_rules()
-       └─> LLMによる情報取得ルール生成/更新
-       └─> (初回: generate_rules, 2回目以降: update_rules with score feedback)
+    3. (2回目以降) BaseRuleGenerator.update_rules_with_history()
+       └─> 履歴に基づくルールpool更新
+       └─> 成績の良いルールを保持 + 新規ルール生成
     
-    4. LLMKnowledgeRetriever.retrieve_knowledge_for_triples()
-       └─> 外部情報源から知識を取得
+    4. RuleSelector.select_rules()
+       └─> 多腕バンディット戦略でルール選択
     
-    5. TriplesEditor.add_triples_based_on_rules()
-       └─> ルールに基づいてトリプルを追加
+    5. TriplesEditor.add_triples_for_single_rule()
+       └─> 選択した各ルールに基づいてトリプルを追加
     
-    6. ScoreVariationAnalyzer.create_report()
-       └─> スコア変化を分析しレポート生成
+    6. RuleWiseAnalyzer.analyze()
+       └─> スコア変化を分析し履歴に記録
 ```
 
 ### ディレクトリ構造
@@ -317,7 +363,7 @@ experiments/{date}/
 ### コーディング規約
 
 - **PEP8準拠**: すべてのPythonコードはPEP8スタイルガイドに従う
-- **Google Style Docstring**: すべての関数・クラスにGoogle形式のdocstringを記述
+- **Google Style Docstring**: すべてのスクリプト・関数・クラスにGoogle形式のdocstringを記述
 - **ロギング**: `util.get_logger()`を使用した統一的なログ出力
 - **可読性重視**: 変数名・関数名は意味が明確になるよう命名
 - **型ヒント**: 関数の引数・戻り値には型ヒントを記述
@@ -336,6 +382,11 @@ experiments/{date}/
 - **テストカバレッジ**: 主要機能には対応するテストコードを作成
 - **命名規則**: テストファイルは`test_*.py`の形式で命名
 - **テスト結果の管理**: テストが成功した場合は、`tests/`ディレクトリの下に、日付と日時を名称に含むディレクトリを作成し、その中にテスト結果のレポートを作成
+- **テストのタイミング**: クラスや関数を新たに作成した場合は、必ずユニットテストを作成し、実行してください。
+
+## 検証・デバッグ
+- 検証・デバックする際に、コードを新たに作成する場合は、利用可能な関数やクラスがないか確認し、出来るだけそれを使ってコードを書いてください。
+- 検証・デバックのために一時的に作成するファイルは`./tmp/debug`のディレクトリに配置すること
 
 ---
 

@@ -61,6 +61,82 @@ def get_related_triples(target_triple: Tuple[str, str, str],
     triples_out = [(uuid_prefix + str(h), r, uuid_prefix + str(t)) for h, r, t in sub]
     return triples_out, target_triple
 
+
+def extract_rules_from_entire_graph(kge: KnowledgeGraphEmbedding,
+                                     target_relation: str,
+                                     top_k: int = 3,
+                                     sorted_by: str = None,
+                                     min_head_coverage: float = 0.01,
+                                     min_pca_conf: float = 0.01,
+                                     dir_working: str = './tmp') -> AmieRules:
+    """
+    Extract AMIE+ rules from the entire knowledge graph.
+    
+    Args:
+        kge: Knowledge graph embedding model
+        target_relation: Target relation to extract rules for
+        top_k: Number of top rules to return
+        sorted_by: Sort metric for filtering rules
+        min_head_coverage: Minimum head coverage threshold for AMIE+
+        min_pca_conf: Minimum PCA confidence threshold for AMIE+
+        dir_working: Working directory for temporary files
+        
+    Returns:
+        AmieRules: Extracted rules filtered by target relation
+    """
+    logger.info("Extracting AMIE+ rules from entire knowledge graph...")
+    
+    # Get all triples from the knowledge graph
+    all_triples = kge.get_labeled_triples()
+    logger.info(f"Total triples in knowledge graph: {len(all_triples)}")
+    
+    # Count target relation triples
+    target_triples = [triple for triple in all_triples if triple[1] == target_relation]
+    logger.info(f"Target relation '{target_relation}' triples: {len(target_triples)}")
+    
+    # Create temporary directory for AMIE+
+    dir_rules = os.path.join(dir_working, f"rules_entire_{str(uuid.uuid4())[:8]}")
+    logger.info(f'Create temporary directory for AMIE+: {dir_rules}')
+    os.makedirs(dir_rules, exist_ok=True)
+    
+    # Save all triples for AMIE+
+    amie_in = os.path.join(dir_rules, "entire_graph.tsv")
+    logger.info(f"Writing entire graph triples to {amie_in}")
+    write_triples(amie_in, all_triples)
+    
+    # Run AMIE+ on entire graph
+    logger.info("Running AMIE+ on entire knowledge graph...")
+    rules = AmieRules.run_amie(
+        all_triples,
+        amie_jar=PATH_AMIE_JAR,
+        min_head_coverage=min_head_coverage,
+        min_pca=min_pca_conf,
+        java_opts=["-Xmx8G"],  # Increased memory for larger graph
+    )
+    
+    # Save all rules before filtering
+    rules.to_csv(os.path.join(dir_rules, 'amie_rules_all.csv'))
+    logger.info(f"Total rules extracted: {len(rules.rules)}")
+    
+    # Filter by target relation
+    rules = rules.filter_rules_by_head_relation(target_relation)
+    logger.info(f"Rules with head relation '{target_relation}': {len(rules.rules)}")
+    
+    # Exclude gardening_hint relations (semantically meaningless)
+    rules = rules.exclude_relations_by_pattern(['/dataworld/gardening_hint/'])
+    logger.info(f"Rules after excluding gardening_hint relations: {len(rules.rules)}")
+    
+    # Save filtered rules
+    rules.to_csv(os.path.join(dir_rules, 'amie_rules_filtered.csv'))
+    
+    # Apply additional filtering if specified
+    if sorted_by and len(rules.rules) > 0:
+        logger.info(f"Filtering rules by {sorted_by}, keeping top {top_k}...")
+        rules = rules.filter(sort_by=sorted_by, top_k=top_k)
+    
+    return rules
+
+
 def extract_rules_from_high_score_triples(kge:KnowledgeGraphEmbedding, 
                                           target_relation:str, 
                                           top_k=3, 
@@ -148,6 +224,10 @@ def extract_rules_from_high_score_triples(kge:KnowledgeGraphEmbedding,
     )
     rules.to_csv(os.path.join(dir_rules, 'amie_rules_before_filter.csv'))
     rules = rules.filter_rules_by_head_relation(target_relation)
+    
+    # Exclude gardening_hint relations (semantically meaningless)
+    rules = rules.exclude_relations_by_pattern(['/dataworld/gardening_hint/'])
+    logger.info(f"Rules after excluding gardening_hint relations: {len(rules.rules)}")
 
     # dir_rulesを削除
     #if os.path.exists(dir_rules):

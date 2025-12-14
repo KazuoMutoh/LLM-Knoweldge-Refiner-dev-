@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-7.4.4, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /app
+plugins: anyio-4.11.0
+collecting ... collected 7 items
+
+tests/test_add_triples_for_single_rule.py::test_add_triples_simple_rule PASSED [ 14%]
+tests/test_add_triples_for_single_rule.py::test_add_triples_multiple_targets PASSED [ 28%]
+tests/test_add_triples_for_single_rule.py::test_add_triples_no_match PASSED [ 42%]
+tests/test_add_triples_for_single_rule.py::test_add_triples_partial_match PASSED [ 57%]
+tests/test_add_triples_for_single_rule.py::test_add_triples_complex_rule PASSED [ 71%]
+tests/test_add_triples_for_single_rule.py::test_add_triples_with_related_triples PASSED [ 85%]
+tests/test_add_triples_for_single_rule.py::test_add_triples_details_structure PASSED [100%]
+
+============================== 7 passed in 2.20s ===============================

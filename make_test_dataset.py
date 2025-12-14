@@ -64,6 +64,23 @@ def parse_entities(spec: str) -> List[str]:
     return [s.strip() for s in spec.split(",") if s.strip()]
 
 
+def count_entity_triples(base: List[Triple], entity: str) -> int:
+    """Count the number of triples involving the given entity.
+    
+    Args:
+        base: Base split triples.
+        entity: Entity to count triples for.
+    
+    Returns:
+        Number of triples containing the entity.
+    """
+    count = 0
+    for h, r, t in base:
+        if h == entity or t == entity:
+            count += 1
+    return count
+
+
 def pick_neighbors(base: List[Triple], target_entities: Set[str], target_relation: str,
                    remove_preference: str) -> Set[str]:
     """Collect neighbor entities around target_entities via non‑target relations.
@@ -112,16 +129,21 @@ def compute_deletions(base: List[Triple], selected_entities: Set[str],
         base: Base split triples.
         selected_entities: Entities whose incident triples will be deleted.
         target_relation: Target relation r_t.
-        include_target: If False, keep triples with relation r_t.
+        include_target: If True, also delete triples with relation r_t for selected_entities.
+                       If False, keep triples with relation r_t for selected_entities.
 
     Returns:
         List of triples to delete.
     """
     deletions: List[Triple] = []
+    
+    # Collect triples incident to selected_entities
     for h, r, t in base:
         if (h in selected_entities) or (t in selected_entities):
             if include_target or r != target_relation:
                 deletions.append((h, r, t))
+    
+    print(f"Total deletions: {len(deletions)}")
     return deletions
 
 
@@ -160,10 +182,18 @@ def main():
         rng.shuffle(triples_rt)
         side_idx = 0 if args.target_preference == "head" else 2
         picked, seen = [], set()
+        
+        print(f"Filtering candidates with minimum {args.min_target_triples} triples...")
         for h, r, t in triples_rt:
             e = h if side_idx == 0 else t
             if e not in seen:
-                picked.append(e); seen.add(e)
+                # Check if entity has enough context (minimum number of triples)
+                triple_count = count_entity_triples(base, e)
+                if triple_count >= args.min_target_triples:
+                    picked.append(e)
+                    seen.add(e)
+                else:
+                    print(f"  Skipping {e}: only {triple_count} triples (< {args.min_target_triples})")
             if len(picked) >= args.auto_target_entities:
                 break
         parsed_target_entities = picked
@@ -171,6 +201,101 @@ def main():
             raise SystemExit("No candidate entities found for automatic selection. Check target_relation and base_triples.")
 
     target_entities = set(parsed_target_entities)
+    desired_count = len(target_entities)  # Remember the original desired count
+
+    # -------------------------------------------
+    # Filter out target entities that are neighbors of other target entities
+    # and refill to maintain desired count
+    # -------------------------------------------
+    print(f"\nChecking for mutual neighbor relationships among target entities...")
+    
+    # Build a list of all candidates (for refilling)
+    if len(parsed_target_entities) > 0 and args.auto_target_entities > 0:
+        triples_rt = [tr for tr in base if tr[1] == args.target_relation]
+        side_idx = 0 if args.target_preference == "head" else 2
+        all_candidates = []
+        seen_candidates = set()
+        for h, r, t in triples_rt:
+            e = h if side_idx == 0 else t
+            if e not in seen_candidates:
+                triple_count = count_entity_triples(base, e)
+                if triple_count >= args.min_target_triples:
+                    all_candidates.append(e)
+                    seen_candidates.add(e)
+    else:
+        all_candidates = []
+    
+    max_iterations = 10  # Prevent infinite loop
+    iteration = 0
+    
+    while iteration < max_iterations:
+        iteration += 1
+        
+        # Build neighbor graph: which target entities are connected via non-target relations
+        mutual_neighbors = set()
+        for h, r, t in base:
+            if r == args.target_relation:
+                continue
+            # If both h and t are target entities, they are mutual neighbors
+            if h in target_entities and t in target_entities:
+                # Prefer to remove the one with fewer triples
+                count_h = count_entity_triples(base, h)
+                count_t = count_entity_triples(base, t)
+                if count_h < count_t:
+                    mutual_neighbors.add(h)
+                elif count_t < count_h:
+                    mutual_neighbors.add(t)
+                else:
+                    # If equal, remove one arbitrarily (deterministic by entity id)
+                    if h < t:
+                        mutual_neighbors.add(h)
+                    else:
+                        mutual_neighbors.add(t)
+        
+        if len(mutual_neighbors) == 0:
+            if iteration == 1:
+                print(f"  No mutual neighbor relationships found. All {len(target_entities)} targets are independent.")
+            else:
+                print(f"  Iteration {iteration}: No more mutual neighbors. Final count: {len(target_entities)}")
+            break
+        
+        print(f"  Iteration {iteration}: Found {len(mutual_neighbors)} target entities that are neighbors of other targets")
+        print(f"  Removing them to avoid complete context loss...")
+        for entity in list(mutual_neighbors)[:5]:
+            print(f"    - {entity}")
+        if len(mutual_neighbors) > 5:
+            print(f"    ... and {len(mutual_neighbors) - 5} more")
+        
+        target_entities = target_entities - mutual_neighbors
+        print(f"  Remaining target entities: {len(target_entities)}")
+        
+        # Refill to maintain desired count
+        num_to_add = desired_count - len(target_entities)
+        if num_to_add > 0 and len(all_candidates) > 0:
+            print(f"  Refilling with {num_to_add} new candidates...")
+            added = 0
+            for candidate in all_candidates:
+                if candidate not in target_entities and candidate not in mutual_neighbors:
+                    target_entities.add(candidate)
+                    added += 1
+                    if added >= num_to_add:
+                        break
+            print(f"  Added {added} new targets. Current count: {len(target_entities)}")
+            
+            if added < num_to_add:
+                print(f"  Warning: Could only add {added}/{num_to_add} targets. No more valid candidates available.")
+                break
+        elif num_to_add > 0:
+            print(f"  Warning: Need to add {num_to_add} more targets but no candidates available.")
+            break
+        else:
+            # Already at desired count, continue checking for mutual neighbors
+            pass
+    
+    if iteration >= max_iterations:
+        print(f"  Warning: Reached maximum iterations ({max_iterations}). Stopping mutual neighbor removal.")
+    
+    print(f"\nFinal target entity count: {len(target_entities)} (desired: {desired_count})")
 
     # -------------------------------------------
     # 1) Extract target triples S (for information/debug; not strictly required downstream)
@@ -189,7 +314,12 @@ def main():
     # -------------------------------------------
     # 3) Deletion triples are those in base incident to selected neighbors
     # -------------------------------------------
-    removed_triples = compute_deletions(base, neighbors_sel, args.target_relation, args.include_target)
+    removed_triples = compute_deletions(
+        base, 
+        neighbors_sel, 
+        args.target_relation, 
+        args.include_target
+    )
 
 
     # -------------------------------------------
@@ -225,6 +355,8 @@ def main():
 
     mapping = dict()
     for split in {'train', 'valid', 'test'}:
+        if split not in new_data:
+            continue
         removed_triples = new_data[split]['removed']
         for triple in removed_triples:
             

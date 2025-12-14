@@ -1,13 +1,14 @@
 {
-  "target_preference": "tail",
+  "target_preference": "head",
   "remove_preference": "both",
-  "drop_ratio": 1.0,
+  "drop_ratio": 0.7,
   "base_triples": "train",
   "target_entities": "-",
   "seed": 42,
-  "include_target": false,
+  "include_target": true,
   "removed_filename": "removed.tsv",
   "manifest": "config_dataset.json",
   "auto_target_entities": 100,
+  "min_target_triples": 5,
   "selected_target_entities_filename": "selected_target_entities.txt"
 }

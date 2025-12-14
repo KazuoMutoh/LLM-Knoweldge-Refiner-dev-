@@ -279,6 +279,41 @@ class AmieRules:
             rel_name = relation.split("(", 1)[0].strip()
         filtered = [r for r in self.rules if rel_name in r.head]
         return AmieRules(filtered)
+    
+    def exclude_relations_by_pattern(self, exclude_patterns: List[str]) -> "AmieRules":
+        """特定のリレーションパターンを含むルールを除外
+        
+        Args:
+            exclude_patterns: 除外するリレーションのパターンリスト (例: ['/dataworld/gardening_hint/'])
+        
+        Returns:
+            AmieRules: フィルタリング後のルール集合
+        """
+        filtered = []
+        for rule in self.rules:
+            # Check if any pattern matches in head or body
+            should_exclude = False
+            
+            # Check head relation
+            for pattern in exclude_patterns:
+                if pattern in rule.head.p:
+                    should_exclude = True
+                    break
+            
+            # Check body relations
+            if not should_exclude:
+                for body_pattern in rule.body:
+                    for pattern in exclude_patterns:
+                        if pattern in body_pattern.p:
+                            should_exclude = True
+                            break
+                    if should_exclude:
+                        break
+            
+            if not should_exclude:
+                filtered.append(rule)
+        
+        return AmieRules(filtered)
 
     def to_csv(self, path: str) -> None:
         with open(path, "w", newline="", encoding="utf-8") as f:

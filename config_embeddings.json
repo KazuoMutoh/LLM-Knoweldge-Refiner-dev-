@@ -6,11 +6,7 @@
   },
   "loss": "CrossEntropyLoss",
   "training_loop": "lcwa",
-  "stopper": "early",
-  "stopper_kwargs": {
-    "frequency": 50,
-    "patience": 2
-  },
+  "stopper": null,
   "optimizer": "adam",
   "optimizer_kwargs": {
     "lr": 0.0016608460884079603,

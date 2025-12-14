@@ -412,8 +412,9 @@ def add_triples_for_single_rule(dir_triples: str,
         })
         set_triples_to_be_added |= set(_triples_to_be_added)
     
-    # 関連トリプルの追加
-    for triple in set_triples_to_be_added:
+    # 関連トリプルの追加（イテレーション前にコピーを作成）
+    triples_to_check = list(set_triples_to_be_added)
+    for triple in triples_to_check:
         h, r, t = triple
         related_triples = [tr for tr in set_candidate_triples if h in tr or t in tr]
         set_triples_to_be_added |= set(related_triples)
@@ -516,7 +517,9 @@ def add_triples_based_on_rules(dir_triples:str,
         set_triples_to_be_added |= set(_triples_to_be_added)
     
     # find related triples
-    for triple in set_triples_to_be_added:
+    # Create a copy of the set to iterate over while modifying the original
+    triples_copy = set(set_triples_to_be_added)
+    for triple in triples_copy:
         h, r, t = triple
         related_triples = [tr for tr in set_candidate_triples if h in tr or t in tr]
         set_triples_to_be_added |= set(related_triples)

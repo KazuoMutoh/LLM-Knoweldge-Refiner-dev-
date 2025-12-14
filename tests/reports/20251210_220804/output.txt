@@ -1,0 +1,43 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-7.4.4, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /app
+plugins: anyio-4.11.0
+collecting ... collected 34 items
+
+tests/test_triples_editor.py::test_triple_pattern_variables_no_variables PASSED [  2%]
+tests/test_triples_editor.py::test_triple_pattern_variables_single PASSED [  5%]
+tests/test_triples_editor.py::test_triple_pattern_variables_multiple PASSED [  8%]
+tests/test_triples_editor.py::test_triple_pattern_instantiate_no_variables PASSED [ 11%]
+tests/test_triples_editor.py::test_triple_pattern_instantiate_with_substitution PASSED [ 14%]
+tests/test_triples_editor.py::test_triple_pattern_instantiate_partial PASSED [ 17%]
+tests/test_triples_editor.py::test_unify_constants_both_constants_equal PASSED [ 20%]
+tests/test_triples_editor.py::test_unify_constants_both_constants_different PASSED [ 23%]
+tests/test_triples_editor.py::test_unify_constants_one_variable PASSED   [ 26%]
+tests/test_triples_editor.py::test_unify_constants_both_variables PASSED [ 29%]
+tests/test_triples_editor.py::test_extend_theta_empty PASSED             [ 32%]
+tests/test_triples_editor.py::test_extend_theta_consistent PASSED        [ 35%]
+tests/test_triples_editor.py::test_extend_theta_inconsistent PASSED      [ 38%]
+tests/test_triples_editor.py::test_extend_theta_constant_mismatch PASSED [ 41%]
+tests/test_triples_editor.py::test_unify_head_simple PASSED              [ 44%]
+tests/test_triples_editor.py::test_unify_head_constant_match PASSED      [ 47%]
+tests/test_triples_editor.py::test_unify_head_constant_mismatch PASSED   [ 50%]
+tests/test_triples_editor.py::test_unify_head_all_constants PASSED       [ 52%]
+tests/test_triples_editor.py::test_unify_head_all_constants_mismatch PASSED [ 55%]
+tests/test_triples_editor.py::test_triple_index_match_all_bound PASSED   [ 58%]
+tests/test_triples_editor.py::test_triple_index_match_by_sp PASSED       [ 61%]
+tests/test_triples_editor.py::test_triple_index_match_by_p PASSED        [ 64%]
+tests/test_triples_editor.py::test_triple_index_match_with_theta PASSED  [ 67%]
+tests/test_triples_editor.py::test_backtrack_single_pattern PASSED       [ 70%]
+tests/test_triples_editor.py::test_backtrack_two_patterns_join PASSED    [ 73%]
+tests/test_triples_editor.py::test_backtrack_no_match PASSED             [ 76%]
+tests/test_triples_editor.py::test_backtrack_three_patterns PASSED       [ 79%]
+tests/test_triples_editor.py::test_find_body_triples_simple_rule PASSED  [ 82%]
+tests/test_triples_editor.py::test_find_body_triples_multiple_rules PASSED [ 85%]
+tests/test_triples_editor.py::test_find_body_triples_no_match PASSED     [ 88%]
+tests/test_triples_editor.py::test_find_body_triples_relation_mismatch PASSED [ 91%]
+tests/test_triples_editor.py::test_find_body_triples_variable_relation_in_head PASSED [ 94%]
+tests/test_triples_editor.py::test_realistic_nationality_rule PASSED     [ 97%]
+tests/test_triples_editor.py::test_complex_multi_hop_rule PASSED         [100%]
+
+============================== 34 passed in 2.15s ==============================

@@ -14,6 +14,10 @@ from pykeen.pipeline import pipeline, PipelineResult
 from pykeen.models import Model
 from pykeen.datasets import get_dataset
 
+from simple_active_refine.util import get_logger
+
+logger = get_logger(__name__)
+
 Triple = Tuple[str, str, str]
 
 
@@ -119,7 +123,7 @@ class KnowledgeGraphEmbedding:
                 raise FileNotFoundError(f"train.txt not found in {dir_triples}")
             
             f_test = os.path.join(dir_triples, 'test.txt')
-            if os.path.exists(f_test):
+            if os.path.exists(f_test) and os.path.getsize(f_test) > 0:
                 test_tf = TriplesFactory.from_path(path=os.path.join(dir_triples, 'test.txt'), 
                                                     entity_to_id=train_tf.entity_to_id,
                                                     relation_to_id=train_tf.relation_to_id)
@@ -127,7 +131,7 @@ class KnowledgeGraphEmbedding:
                 test_tf = None
             
             f_valid = os.path.join(dir_triples, 'valid.txt')
-            if os.path.exists(f_valid):
+            if os.path.exists(f_valid) and os.path.getsize(f_valid) > 0:
                 valid_tf = TriplesFactory.from_path(path=os.path.join(dir_triples, 'valid.txt'), 
                                                     entity_to_id=train_tf.entity_to_id,
                                                     relation_to_id=train_tf.relation_to_id)
@@ -175,13 +179,23 @@ class KnowledgeGraphEmbedding:
         h_ids = []
         r_ids = []
         t_ids = []
+        skipped = []
         for h, r, t in triples:
             if h not in self.triples.entity_to_id or r not in self.triples.relation_to_id or t not in self.triples.entity_to_id:
-                raise ValueError(f"Entity or relation not found in the training triples: {(h,r,t)}")
+                # Skip triples with unknown entities/relations instead of raising error
+                skipped.append((h, r, t))
+                continue
             h_ids.append(self.triples.entity_to_id[h])
             r_ids.append(self.triples.relation_to_id[r])
             t_ids.append(self.triples.entity_to_id[t])
 
+        if skipped:
+            logger.warning(f"Skipped {len(skipped)} triples with unknown entities/relations")
+        
+        if not h_ids:
+            # All triples were skipped
+            return torch.tensor([], dtype=torch.long, device=self.device).reshape(0, 3)
+        
         return torch.tensor(list(zip(h_ids, r_ids, t_ids)), dtype=torch.long, device=self.device)
 
     def _normalize_scores(self, 
@@ -216,6 +230,11 @@ class KnowledgeGraphEmbedding:
             List of scores in [0,1] (normalized).
         """
         triples = self._label_to_id(labeled_triples)
+        
+        # Handle empty triples (all skipped)
+        if len(triples) == 0:
+            logger.warning("No valid triples to score (all were skipped)")
+            return []
 
         with torch.no_grad():
             scores = self.model.score_hrt(triples)
