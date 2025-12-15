@@ -13,6 +13,7 @@ from pykeen.triples import TriplesFactory
 from pykeen.pipeline import pipeline, PipelineResult
 from pykeen.models import Model
 from pykeen.datasets import get_dataset
+from pykeen.evaluation import RankBasedEvaluator
 
 from simple_active_refine.util import get_logger
 
@@ -48,6 +49,7 @@ class KnowledgeGraphEmbedding:
             model_dir: Directory containing the trained model and triples mappings. (created by PipelineResult.save_to_directory())
         """
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.dir_save = model_dir  # Store the model directory
         
         if model_dir is not None:
             
@@ -152,6 +154,7 @@ class KnowledgeGraphEmbedding:
         instance = KnowledgeGraphEmbedding()
         instance.model = result.model.to(self.device)
         instance.triples = train_tf
+        instance.device = self.device
 
         # --------------------------
         # preprocess for scoring
@@ -313,3 +316,70 @@ class KnowledgeGraphEmbedding:
         self._train_score_min = float(np.min(scores))
         self._train_score_max = float(np.max(scores))
     
+    def evaluate(self, test_triples: Optional[TriplesFactory] = None, batch_size: int = 256) -> Dict[str, float]:
+        """
+        Evaluate the model on test triples using rank-based metrics (Hits@k, MRR).
+        
+        Args:
+            test_triples: TriplesFactory containing test triples. If None, uses the model's own test set if available.
+            batch_size: Batch size for evaluation.
+            
+        Returns:
+            Dictionary containing evaluation metrics:
+                - hits_at_1: Hits@1
+                - hits_at_3: Hits@3
+                - hits_at_10: Hits@10
+                - mean_reciprocal_rank: MRR
+        """
+        # If no test triples provided, try to load from the model directory
+        if test_triples is None:
+            # Check if test.txt exists in the model directory
+            if hasattr(self, 'dir_save') and self.dir_save:
+                test_path = os.path.join(self.dir_save, 'test.txt')
+                if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
+                    test_triples = TriplesFactory.from_path(
+                        path=test_path,
+                        entity_to_id=self.triples.entity_to_id,
+                        relation_to_id=self.triples.relation_to_id
+                    )
+                else:
+                    logger.warning("No test triples provided and test.txt not found. Using validation set if available.")
+                    # Try validation set
+                    valid_path = os.path.join(self.dir_save, 'valid.txt')
+                    if os.path.exists(valid_path) and os.path.getsize(valid_path) > 0:
+                        test_triples = TriplesFactory.from_path(
+                            path=valid_path,
+                            entity_to_id=self.triples.entity_to_id,
+                            relation_to_id=self.triples.relation_to_id
+                        )
+                    else:
+                        raise ValueError("No test or validation triples available for evaluation")
+            else:
+                raise ValueError("Model directory not set and no test triples provided")
+        
+        # Create evaluator
+        evaluator = RankBasedEvaluator()
+        
+        # Evaluate
+        logger.info("Evaluating model on test set...")
+        results = evaluator.evaluate(
+            model=self.model,
+            mapped_triples=test_triples.mapped_triples.to(self.device),
+            batch_size=batch_size,
+            additional_filter_triples=[self.triples.mapped_triples.to(self.device)]
+        )
+        
+        # Extract metrics
+        metrics = {
+            'hits_at_1': results.get_metric('hits@1'),
+            'hits_at_3': results.get_metric('hits@3'),
+            'hits_at_10': results.get_metric('hits@10'),
+            'mean_reciprocal_rank': results.get_metric('mean_reciprocal_rank')
+        }
+        
+        logger.info(f"Evaluation results: Hits@1={metrics['hits_at_1']:.4f}, "
+                   f"Hits@3={metrics['hits_at_3']:.4f}, "
+                   f"Hits@10={metrics['hits_at_10']:.4f}, "
+                   f"MRR={metrics['mean_reciprocal_rank']:.4f}")
+        
+        return metrics

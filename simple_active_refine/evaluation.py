@@ -10,6 +10,7 @@ import json
 import os
 from typing import List, Dict, Tuple, Optional
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from dataclasses import dataclass, asdict
@@ -100,6 +101,12 @@ class IterationEvaluator:
         logger.info(f'  Calculating scores for {len(target_triples)} target triples')
         scores_before = kge_before.score_triples(target_triples)
         scores_after = kge_after.score_triples(target_triples)
+        
+        # リストの場合はnumpy配列に変換
+        if isinstance(scores_before, list):
+            scores_before = np.array(scores_before)
+        if isinstance(scores_after, list):
+            scores_after = np.array(scores_after)
         
         target_score_before = float(scores_before.mean()) if len(scores_before) > 0 else 0.0
         target_score_after = float(scores_after.mean()) if len(scores_after) > 0 else 0.0

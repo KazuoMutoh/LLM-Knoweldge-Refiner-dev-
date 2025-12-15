@@ -20,6 +20,7 @@
    e. 履歴全体を使ってルールpool更新
 """
 
+import argparse
 import json
 import os
 import random
@@ -71,6 +72,13 @@ def sample_target_triples(all_target_triples, n_sample, exclude_triples=None):
 
 
 if __name__ == '__main__':
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='Knowledge Graph Improvement with Multi-Armed Bandit')
+    parser.add_argument('--n_iter', type=int, default=2, help='Number of iterations')
+    parser.add_argument('--num_epochs', type=int, default=2, help='Number of epochs for embedding training')
+    parser.add_argument('--dir', type=str, default='./experiments/20251214/test_eval', help='Working directory')
+    args = parser.parse_args()
+    
     """パラメータ設定"""
     # 対象知識グラフとリレーション
     knowledge_graph = 'FB15k-237'
@@ -78,8 +86,8 @@ if __name__ == '__main__':
     
     # 全体制御
     dir_initial_triples = './experiments/test_data_for_nationality_v3'  # v3: min_target_triples=5, 相互近傍除外, 自動リフィル
-    n_iter = 2  # テスト用: 評価機能のテスト（想定実行時間: 5-8分）
-    dir_working = './experiments/20251214/try2'
+    n_iter = args.n_iter  # コマンドライン引数から取得
+    dir_working = args.dir  # コマンドライン引数から取得
     
     # ルールpool設定（効率型）
     n_rules_pool = 12      # AMIE+上位12個（73個中）
@@ -99,7 +107,7 @@ if __name__ == '__main__':
     
     # 埋込モデル設定
     f_config_embedding = "./config_embeddings.json"
-    num_epochs = 100
+    num_epochs = args.num_epochs  # コマンドライン引数から取得
     
     # 作業ディレクトリ作成
     if not os.path.exists(dir_working):
