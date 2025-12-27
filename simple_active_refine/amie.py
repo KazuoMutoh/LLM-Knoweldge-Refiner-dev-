@@ -221,13 +221,24 @@ class LLMRuleFilter:
             raise
 
         # 3) Fill in missing responses for stability
-        scored: Dict[int, Tuple[float, str]] = {it.id: (float(it.score), it.description.strip(), it.reason.strip()) for it in result.items}
+        # Pydantic BaseModel has an .items() method; structured.invoke may return a BaseModel or a plain dict.
+        if hasattr(result, "model_dump"):
+            result_items = result.model_dump().get("items", [])
+        elif isinstance(result, dict):
+            result_items = result.get("items", [])
+        else:
+            raise TypeError(f"Unexpected LLM response type: {type(result)}")
+
+        scored: Dict[int, Tuple[float, str]] = {
+            int(it["id"]): (float(it["score"]), it["description"].strip(), it["reason"].strip())
+            for it in result_items
+        }
         expected_ids = {i for i, _ in pre}
         missing_ids = expected_ids - set(scored.keys())
         if missing_ids:
             logging.warning(f"Missing scores for ids: {missing_ids}")
         for mid in sorted(missing_ids):
-            scored[mid] = (0.0, "missing_from_llm")
+            scored[mid] = (0.0, "missing_from_llm", "missing_from_llm")
 
         # 4) Select top rules and add metadata
         ranked = sorted(scored.items(), key=lambda x: x[1][0], reverse=True)[:top_k]

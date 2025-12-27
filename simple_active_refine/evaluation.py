@@ -8,11 +8,15 @@
 
 import json
 import os
+import importlib
 from typing import List, Dict, Tuple, Optional
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
+try:
+    sns = importlib.import_module("seaborn")
+except ModuleNotFoundError:  # pragma: no cover
+    sns = None
 from dataclasses import dataclass, asdict
 
 from simple_active_refine.embedding import KnowledgeGraphEmbedding
@@ -252,6 +256,10 @@ class IterationEvaluator:
             df: メトリクス履歴のDataFrame
             dir_save: 保存先ディレクトリ
         """
+        if sns is None:
+            logger.warning("seaborn is not installed; skipping plot generation")
+            return
+
         sns.set_style("whitegrid")
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         

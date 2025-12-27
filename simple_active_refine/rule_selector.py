@@ -251,31 +251,26 @@ Provide a JSON with:
             logger.info(f"Pool size ({len(rule_pool)}) <= k ({k}), selecting all rules")
             return rule_pool, self.current_policy
         
-        # iteration=0の場合、pca_confが高い順に選択（探索的な初期選択）
+        # iteration=0の場合は、初期ルールプール構築時の並び順を尊重して先頭から選択
         if iteration == 0:
-            logger.info(f"Iteration 0: Selecting top {k} rules by pca_conf (AMIE+ confidence)")
-            
-            # pca_confでソート（降順）
-            sorted_rules = sorted(
-                rule_pool,
-                key=lambda r: r.rule.pca_conf if r.rule.pca_conf is not None else -1,
-                reverse=True
+            logger.info(
+                "Iteration 0: Selecting first %d rules in the existing pool order "
+                "(aligned with initial pool construction criteria)",
+                k,
             )
-            
-            selected = sorted_rules[:k]
-            
+
+            selected = rule_pool[:k]
+
             for i, rule_with_id in enumerate(selected, 1):
-                pca_conf = rule_with_id.rule.pca_conf if rule_with_id.rule.pca_conf is not None else 0.0
-                logger.info(f"  Selected: {rule_with_id.rule_id} (rank {i}, pca_conf={pca_conf:.4f})")
-            
+                logger.info("  Selected: %s (rank %d in initial pool)", rule_with_id.rule_id, i)
+
             # 初期ポリシーを設定
             if self.current_policy is None:
                 self.current_policy = (
-                    "Initial iteration: Selected top rules by AMIE+ PCA confidence to explore "
-                    "high-quality patterns. In subsequent iterations, we will adapt based on "
-                    "observed performance and balance exploration with exploitation."
+                    "Initial iteration: Used the pre-ranked rule pool (same ordering as pool construction). "
+                    "Later iterations adapt based on observed performance while keeping exploration/exploitation balance."
                 )
-            
+
             return selected, self.current_policy
         
         # プロンプト生成
@@ -515,6 +510,23 @@ class EpsilonGreedyRuleSelector(RuleSelector):
         return selected, None
 
 
+class RandomRuleSelector(RuleSelector):
+    """単純ランダムでルールを選択するセレクタ"""
+
+    def select_rules(
+        self,
+        rule_pool: List[RuleWithId],
+        k: int = 3,
+        iteration: int = 0,
+    ) -> tuple[List[RuleWithId], Optional[str]]:
+        if len(rule_pool) <= k:
+            return rule_pool, None
+
+        selected = random.sample(rule_pool, k)
+        logger.info("Selected %d rules randomly", len(selected))
+        return selected, None
+
+
 def create_rule_selector(strategy: str = 'llm_policy', 
                         history: Optional[RuleHistory] = None,
                         **kwargs) -> RuleSelector:
@@ -543,6 +555,9 @@ def create_rule_selector(strategy: str = 'llm_policy',
     elif strategy == 'epsilon_greedy':
         epsilon = kwargs.get('epsilon', 0.1)
         return EpsilonGreedyRuleSelector(history, epsilon)
+
+    elif strategy == 'random':
+        return RandomRuleSelector(history)
     
     else:
         raise ValueError(f"Unknown strategy: {strategy}. "
