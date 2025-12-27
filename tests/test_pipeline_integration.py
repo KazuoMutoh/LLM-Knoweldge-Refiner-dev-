@@ -23,7 +23,7 @@ from simple_active_refine.pipeline import (
     TripleEvaluationResult,
     RuleDrivenKGRefinementPipeline,
 )
-from main_v3 import RandomTripleAcquirer
+from simple_active_refine.triple_acquirer_impl import RandomTripleAcquirer
 
 
 class DummyRuleExtractor(BaseRuleExtractor):
