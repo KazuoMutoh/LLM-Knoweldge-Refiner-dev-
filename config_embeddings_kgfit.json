@@ -1,0 +1,33 @@
+{
+  "embedding_backend": "kgfit",
+  "kgfit": {
+    "reshape_strategy": "full",
+    "hierarchy": {
+      "neighbor_k": 5
+    },
+    "regularizer": {
+      "anchor_weight": 0.5,
+      "cohesion_weight": 0.5,
+      "separation_weight": 0.5,
+      "separation_margin": 0.2,
+      "profile": false,
+      "profile_every": 200
+    }
+  },
+  "model": "transe",
+  "model_kwargs": {
+    "scoring_fct_norm": 1
+  },
+  "loss": "CrossEntropyLoss",
+  "training_loop": "slcwa",
+  "stopper": null,
+  "optimizer": "adam",
+  "optimizer_kwargs": {
+    "lr": 0.001
+  },
+  "training_kwargs": {
+    "batch_size": 256
+  },
+  "evaluator": "RankBasedEvaluator",
+  "random_seed": 42
+}

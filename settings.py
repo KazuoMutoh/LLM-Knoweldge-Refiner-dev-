@@ -1,2 +1,0 @@
-PATH_AMIE_JAR = '/app/bin/amie3.5.jar'
-OPENAI_API_KEY = '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'

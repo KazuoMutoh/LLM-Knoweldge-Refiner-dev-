@@ -10,11 +10,15 @@
 
 本プロジェクトは、知識グラフの品質向上を目的とした研究プロジェクトです。知識グラフ埋込モデルとLLM（Large Language Model）を組み合わせ、外部情報源から知識を取得して知識グラフを段階的に改善します。
 
+./docs/rulesには本プロジェクトのアルゴリズム/設計ルール/標準などが記載された図書が格納されています。ユーザからの入力に回答するときはこれらの図書を参考にしてください。
+
+
 ### アーキテクチャの特徴
 
 - **反復的改善**: 埋込モデルの学習 → ルール抽出/生成 → 情報取得 → トリプル追加のサイクルを繰り返す
 - **LLM活用**: ルール生成・更新、外部情報の取得・検証にLLMを活用
 - **品質重視**: スコアベースのフィルタリングにより、確実性の高いトリプルのみを追加
+
 
 ---
 
@@ -26,6 +30,7 @@
 
 **主な機能**:
 - PyKEENを用いた知識グラフ埋込モデル（TransE等）の学習
+- KGEバックエンド切替（構造のみ `pykeen` / TAKG対応 `kgfit`）
 - トリプルの尤もらしさスコアの計算
 - スコア分布に基づくトリプルのフィルタリング（パーセンタイル指定）
 - モデルの永続化と読み込み
@@ -33,13 +38,16 @@
 **入力**:
 - トリプルデータ（train.txt, valid.txt, test.txt）
 - モデルパラメータ（モデルタイプ、エポック数等）
+- （`embedding_backend="kgfit"` の場合）`dir_triples/.cache/kgfit/` の事前計算成果物
+   - `entity_name_embeddings.npy`, `entity_desc_embeddings.npy`, `entity_embedding_meta.json`
+   - `hierarchy_seed.json`, `cluster_embeddings.npy`, `neighbor_clusters.json`
 
 **出力**:
 - 学習済み埋込モデル
 - トリプルのスコア（正規化済み）
 
 **主要メソッド**:
-- `train_model()`: 埋込モデルの学習
+- `train_model()`: 埋込モデルの学習（`embedding_backend` と `kgfit_config` を受け取り可能）
 - `score_triples()`: トリプルのスコア計算
 - `filter_triples_by_score()`: スコアに基づくフィルタリング
 - `evaluate()`: Hit@k等の評価指標の計算
@@ -47,6 +55,74 @@
 **備考**:
 - スコアは0-1の範囲に正規化される
 - GPU対応（利用可能な場合は自動的にGPUを使用）
+
+参照（設計標準）:
+- KG-FITバックエンド: [docs/rules/RULE-20260119-TAKG_KGFIT-001.md](./docs/rules/RULE-20260119-TAKG_KGFIT-001.md)
+- 正則化/近傍K運用: [docs/rules/RULE-20260119-KGFIT_REGULARIZER_SPEEDUP-001.md](./docs/rules/RULE-20260119-KGFIT_REGULARIZER_SPEEDUP-001.md)
+
+---
+
+### 1.1 KGFitPrecompute（テキスト埋め込み事前計算） (`simple_active_refine/kgfit_precompute.py`)
+
+**役割**: entityテキスト（name/desc）から OpenAI embeddings を生成し、学習時に参照できる `.cache/kgfit/` 成果物として保存する。
+
+**主な機能**:
+- `entity2text.txt` / `entity2textlong.txt` の読み込み（TSV: entity<TAB>text）
+- entity順序の確定（`entities.txt` があればそれを優先）
+- OpenAI embeddings のバッチ生成（学習時にはAPIを叩かない）
+- `.npy` と `entity_embedding_meta.json` の保存
+
+**主要関数**:
+- `precompute_kgfit_embeddings()`
+
+**成果物（既定）**:
+- `<dir_triples>/.cache/kgfit/entity_name_embeddings.npy`
+- `<dir_triples>/.cache/kgfit/entity_desc_embeddings.npy`
+- `<dir_triples>/.cache/kgfit/entity_embedding_meta.json`（`entity_to_row` を含む）
+
+**備考**:
+- 実行スクリプト: `scripts/compute_kgfit_text_embeddings.py`
+
+---
+
+### 1.2 KGFitSeedHierarchy（seed階層/近傍クラスタ事前計算） (`simple_active_refine/kgfit_hierarchy.py`)
+
+**役割**: 事前計算済みテキスト埋め込みから、seed階層（クラスタ）と近傍クラスタ（kNN）を構築し、KG-FIT正則化に必要な成果物を生成する。
+
+**主な機能**:
+- agglomerative clustering（average linkage + cosine distance）
+- `tau` をスキャンし silhouette score 最大を採用
+- cluster centers の算出
+- cluster centers に対する kNN（cosine）で `neighbor_clusters` を算出
+
+**主要関数**:
+- `build_seed_hierarchy()`
+- `compute_neighbor_clusters()`
+- `load_seed_hierarchy_artifacts()`
+
+**成果物（既定）**:
+- `<dir_triples>/.cache/kgfit/hierarchy_seed.json`
+- `<dir_triples>/.cache/kgfit/cluster_embeddings.npy`
+- `<dir_triples>/.cache/kgfit/neighbor_clusters.json`
+
+**備考**:
+- 実行スクリプト: `scripts/build_kgfit_seed_hierarchy.py`
+
+---
+
+### 1.3 KGFitRegularizer / KGFitEntityEmbedding（学習時の追加損失）
+
+**対象**:
+- `simple_active_refine/kgfit_regularizer.py`
+- `simple_active_refine/kgfit_representation.py`
+
+**役割**:
+- entity embedding の forward にフックし、anchor/cohesion/separation を `regularization_term` として加算する
+
+**再実装で重要な点**:
+- anchor embeddings と cluster centers は初期化時にL2正規化して buffer に保持する
+- separation は `einsum` 等で計算し、`expand` による巨大テンソル生成を避ける
+- `unique=True` でバッチ内重複 index を除去し、正則化計算の重複を避ける
 
 ---
 
@@ -319,7 +395,10 @@
 
 ```
 for i in 1 to n_iter:
-    1. KnowledgeGraphEmbedding.train_model()
+   0. （任意）KG-FIT用の事前計算
+      └─> `embedding_backend="kgfit"` を使う場合、事前に `.cache/kgfit/` を生成（テキスト埋め込み + seed階層）
+
+   1. KnowledgeGraphEmbedding.train_model()
        └─> 知識グラフ埋込モデルの学習
     
     2. RuleExtractor.extract_rules_from_entire_graph()
@@ -360,10 +439,13 @@ experiments/{date}/
 
 ## 設計原則
 
+### 設計ルール/標準の参照
+- 実装の際は、必ず./docs/rulesにある設計ルール/標準を参照すること。
+
 ### コーディング規約
 
 - **PEP8準拠**: すべてのPythonコードはPEP8スタイルガイドに従う
-- **Google Style Docstring**: すべてのスクリプト・関数・クラスにGoogle形式のdocstringを記述
+- **Google Style Docstring**: すべてのスクリプト・関数・クラスにGoogle形式のdocstringを記述。主要な関数にはArgsとReturnsを必ず記述すること。
 - **ロギング**: `util.get_logger()`を使用した統一的なログ出力
 - **可読性重視**: 変数名・関数名は意味が明確になるよう命名
 - **型ヒント**: 関数の引数・戻り値には型ヒントを記述
@@ -387,7 +469,45 @@ experiments/{date}/
 ## 検証・デバッグ
 - 検証・デバックする際に、コードを新たに作成する場合は、利用可能な関数やクラスがないか確認し、出来るだけそれを使ってコードを書いてください。
 - 検証・デバックのために一時的に作成するファイルは`./tmp/debug`のディレクトリに配置すること
+- 検証・デバックを通じて、設計ルール/標準を修正する必要があると判断される時は、提案をすること
 
+## ドキュメンテーション
+- アルゴリズム、実装方式の検討などは、./docs/recordsにmarkdownファイルを作成し、それに記載してください。（ISO9001の記録にあたります。）この際、ファイルには、ユニークなIDを付与してください。またトレーサビリティを確保するために、参照したほかのファイルのリンクも記載し、updateした場合は更新日を記載すること。また、記載にあたり、関係する./docs/rulesで更新すべきrulesがあれば提案してください。
+- 検討済のアルゴリズム、プログラム設計は、./docs/rulesにmarkdownファイルを作成し、それに記載すること。（ISO9001の業務ルールにあたります。）この際、ファイルには、ユニークなIDを付与してください。またトレーサビリティを確保するために、参照したほかのファイルのリンクも記載し、updateした場合は更新日を記載すること。
+- ./docs/databaseには、これまでに作成したファイルの一覧を記載するmarkdownファイルを記載すること。ファイル名と、ファイルの内容のようやく、リンクから構成される表にしてください。
+- ./docsの直下には新たにファイルを置かないこと。
+- ./docs/externalには外部情報が格納されます。作成するドキュメントには、必要に応じて外部情報のリンクをはってください。
+
+### ドキュメントID付与ルール
+
+#### 1) IDは「ファイル名」と「本文」に必ず明記
+- **ファイル名**: `./docs/records/<DOC_ID>.md` または `./docs/rules/<DOC_ID>.md`
+- **本文の先頭**（見出し）にも `DOC_ID` を含める
+   - 例: `# REC-20260111-ARM-REFINE-001: ...`
+
+#### 2) records（検討記録）のID形式
+- 形式: `REC-YYYYMMDD-<TOPIC>-NNN`
+   - `YYYYMMDD`: 作成日
+   - `<TOPIC>`: 大文字英数字と `_` のみ（例: `ARM_REFINE`, `COMBO_BANDIT`, `EVALUATION`）
+   - `NNN`: その日・そのTOPIC内の連番（`001`から）
+- 例: `REC-20260111-ARM-REFINE-001.md`
+
+#### 3) rules（設計ルール/標準）のID形式
+- 形式: `RULE-YYYYMMDD-<TOPIC>-NNN`
+   - `<TOPIC>` は records と同様
+- 例: `RULE-20260111-DOC-ID-001.md`
+
+#### 4) 更新時のルール（トレーサビリティ）
+- **原則としてDOC_IDは変更しない**（ファイル名も固定）。
+- 変更した場合は本文に「更新日: YYYY-MM-DD」を追記し、簡単な更新概要を残す。
+- 参照した他ドキュメント・コード・実験成果物（例: `experiments/...`）へのリンクを本文に含める。
+
+#### 5) docs/database の台帳（Index）
+- `./docs/database/` には「作成したドキュメント一覧（台帳）」を1つのMarkdownで管理する。
+   - 推奨ファイル名: `./docs/database/index.md`
+- 台帳は少なくとも次の列を持つ表にする:
+   - `DOC_ID` / `ファイルリンク` / `種別（records|rules）` / `要約（1-2行）` / `作成日` / `最終更新日`
+- 新規ドキュメントを作成・更新したら、必ず台帳も追記・更新する。
 ---
 
 ## 外部依存関係
@@ -400,6 +520,7 @@ experiments/{date}/
 - **ChromaDB**: ベクトルデータベース
 - **rank-bm25**: キーワード検索
 - **Pydantic**: データ検証と構造化出力
+- **SciPy**: seed階層構築（階層クラスタリング）の実装で使用
 
 ### 外部ツール
 

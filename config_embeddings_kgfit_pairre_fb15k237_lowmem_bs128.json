@@ -1,0 +1,37 @@
+{
+  "embedding_backend": "kgfit",
+  "kgfit": {
+    "paths": {
+      "name_embeddings": "/app/data/FB15k-237/.cache/kgfit/entity_name_embeddings.npy",
+      "desc_embeddings": "/app/data/FB15k-237/.cache/kgfit/entity_desc_embeddings.npy",
+      "meta": "/app/data/FB15k-237/.cache/kgfit/entity_embedding_meta.json"
+    },
+    "reshape_strategy": "full",
+    "hierarchy": {
+      "hierarchy_seed": "/app/data/FB15k-237/.cache/kgfit/hierarchy_seed.json",
+      "cluster_embeddings": "/app/data/FB15k-237/.cache/kgfit/cluster_embeddings.npy",
+      "neighbor_clusters": "/app/data/FB15k-237/.cache/kgfit/neighbor_clusters.json",
+      "neighbor_k": 5
+    },
+    "regularizer": {
+      "anchor_weight": 0.5,
+      "cohesion_weight": 0.5,
+      "separation_weight": 0.5,
+      "separation_margin": 0.2
+    }
+  },
+  "model": "pairre",
+  "model_kwargs": {
+    "scoring_fct_norm": 1
+  },
+  "loss": "CrossEntropyLoss",
+  "training_loop": "slcwa",
+  "optimizer": "adam",
+  "optimizer_kwargs": {
+    "lr": 0.001
+  },
+  "training_kwargs": {
+    "batch_size": 128
+  },
+  "random_seed": 42
+}

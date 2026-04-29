@@ -120,10 +120,13 @@ class IterationEvaluator:
         
         # 知識グラフ埋め込み全体の精度評価
         logger.info('  Evaluating knowledge graph embedding (before)')
-        eval_before = kge_before.evaluate()
+        # CPU environments (no CUDA) can easily OOM during rank-based
+        # evaluation for high-dimensional models (e.g., KG-FIT). Use a
+        # conservative slicing configuration for stability.
+        eval_before = kge_before.evaluate(batch_size=1, slice_size=64)
         
         logger.info('  Evaluating knowledge graph embedding (after)')
-        eval_after = kge_after.evaluate()
+        eval_after = kge_after.evaluate(batch_size=1, slice_size=64)
         
         # メトリクスの取得
         hits_at_1_before = eval_before.get('hits_at_1', 0.0)

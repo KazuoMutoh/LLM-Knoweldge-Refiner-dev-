@@ -279,6 +279,111 @@ def _backtrack_patterns(patterns: List[TriplePattern],
 
     yield from dfs(0, dict(theta0))
 
+
+def count_witnesses_for_head(
+    head_triple: Triple,
+    rule: Union[AmieRules, Rule],
+    candidates: Union[Sequence[Triple], TripleIndex],
+    max_witness: Optional[int] = None,
+) -> int:
+    """Count substitutions (witnesses) that satisfy rule body for a head triple.
+
+    Args:
+        head_triple: (subject, predicate, object) tuple for the rule head.
+        rule: Single rule (AmieRules with one element or Rule).
+        candidates: Candidate triples as list/sequence or a TripleIndex.
+        max_witness: Optional cut-off; stop counting after this many matches.
+
+    Returns:
+        Number of satisfying substitutions (witness count).
+    """
+
+    single_rule: Rule
+    if isinstance(rule, AmieRules):
+        if len(rule.rules) != 1:
+            raise ValueError(f"Expected single rule, got {len(rule.rules)} rules")
+        single_rule = rule.rules[0]
+    else:
+        single_rule = rule
+
+    # quick relation check
+    if not (single_rule.head.p.startswith("?") or single_rule.head.p == head_triple[1]):
+        return 0
+
+    theta0 = _unify_head_with_triple(single_rule.head, head_triple)
+    if theta0 is None:
+        return 0
+
+    idx = candidates if isinstance(candidates, TripleIndex) else TripleIndex(candidates)
+    count = 0
+    for _theta, _used in _backtrack_patterns(single_rule.body, idx, theta0):
+        count += 1
+        if max_witness is not None and count >= max_witness:
+            break
+    return count
+
+
+def count_novelty_witnesses_for_head(
+    head_triple: Triple,
+    rule: Union["AmieRules", Rule],
+    idx: TripleIndex,
+    candidate_set: Set[Triple],
+    max_witness: Optional[int] = None,
+) -> int:
+    """Count substitutions (witnesses) that use at least one candidate triple.
+
+    Unlike ``count_witnesses_for_head``, which counts **all** satisfying
+    substitutions, this function counts only those groundings whose body
+    includes at least one triple that is a *new* candidate (i.e., not yet in
+    the current KG).  This measures the arm's own contribution independent of
+    triples already available in the KG.
+
+    Args:
+        head_triple: (subject, predicate, object) tuple for the rule head.
+        rule: Single rule (AmieRules with one element or Rule).
+        idx: Pre-built TripleIndex over current KG + candidate pool.
+        candidate_set: Set of triples considered as candidates (≠ current KG).
+            A grounding is counted only if ``used_triples ∩ candidate_set ≠ ∅``.
+        max_witness: Optional cut-off; stop counting after this many matches.
+
+    Returns:
+        Number of satisfying substitutions that use at least one candidate triple.
+    """
+    single_rule: Rule
+    if isinstance(rule, AmieRules):
+        if len(rule.rules) != 1:
+            raise ValueError(f"Expected single rule, got {len(rule.rules)} rules")
+        single_rule = rule.rules[0]
+    else:
+        single_rule = rule
+
+    # quick relation check
+    if not (single_rule.head.p.startswith("?") or single_rule.head.p == head_triple[1]):
+        return 0
+
+    theta0 = _unify_head_with_triple(single_rule.head, head_triple)
+    if theta0 is None:
+        return 0
+
+    count = 0
+    for _theta, used_triples in _backtrack_patterns(single_rule.body, idx, theta0):
+        # Only count groundings that involve at least one candidate triple.
+        if any(t in candidate_set for t in used_triples):
+            count += 1
+            if max_witness is not None and count >= max_witness:
+                break
+    return count
+
+
+def supports_head(
+    head_triple: Triple,
+    rule: Union[AmieRules, Rule],
+    candidates: Union[Sequence[Triple], TripleIndex],
+) -> bool:
+    """Return True if the rule body is satisfiable for the given head triple."""
+
+    return count_witnesses_for_head(head_triple, rule, candidates, max_witness=1) > 0
+
 def _unify_head_with_triple(head_pat: TriplePattern, head_triple: Triple) -> Optional[Dict[str, str]]:
     """If head pattern can unify with given head triple, return initial substitution dict."""
     theta: Dict[str, str] = {}

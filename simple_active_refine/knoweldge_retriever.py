@@ -34,6 +34,11 @@ class Relation(BaseModel):
     description_short: str
     description: str | None = None
     source: str | None = None
+    # Optional hint for directionality when retrieving for a given entity.
+    # - head: retrieve (entity, relation, ?)
+    # - tail: retrieve (?, relation, entity)
+    # If None, the retriever asks the LLM to decide.
+    position: str | None = None
 
 class Triple(BaseModel):
     subject: str
@@ -693,14 +698,28 @@ class LLMKnowledgeRetriever:
             RetrievedKnowledge: 取得された知識（トリプルとエンティティ）
         """
         logger.info(f"Retrieving knowledge for entity: {entity.id} ({entity.label})")
+
+        # Used in multiple steps below (relation selection + web search JSON parsing)
+        import json
+        import re
+
+        # If positions are explicitly provided for all relations, do not ask the
+        # LLM to (re)select relations/positions. This is important for rule-based
+        # retrieval where directionality must match the rule patterns.
+        provided_positions = bool(list_relations) and all(
+            (getattr(rel, "position", None) in {"head", "tail"}) for rel in list_relations
+        )
         
-        # ステップ1: LLMにrelationを選択させる
-        relation_descriptions = "\n".join([
-            f"- {rel.id}: {rel.description_short} ({rel.description or 'No detailed description'})"
-            for rel in list_relations
-        ])
-        
-        relation_selection_prompt = f"""
+        relation_descriptions = ""
+        relation_selection_prompt = ""
+        if not provided_positions:
+            # ステップ1: LLMにrelationを選択させる
+            relation_descriptions = "\n".join([
+                f"- {rel.id}: {rel.description_short} ({rel.description or 'No detailed description'})"
+                for rel in list_relations
+            ])
+            
+            relation_selection_prompt = f"""
 You are a knowledge graph expert. Your task is to identify which relations are relevant for a given entity.
 
 ENTITY INFORMATION:
@@ -737,31 +756,35 @@ IMPORTANT:
 """
 
         try:
-            # LLMでrelationを選択
-            logger.info("Requesting LLM to select relevant relations")
-            llm_response = self.llm.invoke(relation_selection_prompt)
-            response_text = llm_response.content
-            
-            logger.debug(f"Relation selection response: {response_text[:300]}...")
-            
-            # JSONをパース
-            import json
-            import re
-            
-            json_match = re.search(r'\{[\s\S]*\}', response_text)
-            if not json_match:
-                logger.warning("No valid JSON found in relation selection response")
-                return RetrievedKnowledge(triples=[], entities=[])
-            
-            json_str = json_match.group(0)
-            selection_result = json.loads(json_str)
-            selected_relations = selection_result.get('selected_relations', [])
+            if provided_positions:
+                selected_relations = [
+                    {"relation_id": rel.id, "position": rel.position, "reasoning": "provided_by_caller"}
+                    for rel in list_relations
+                ]
+                logger.info(f"Using {len(selected_relations)} provided relations (skipping LLM selection)")
+            else:
+                # LLMでrelationを選択
+                logger.info("Requesting LLM to select relevant relations")
+                llm_response = self.llm.invoke(relation_selection_prompt)
+                response_text = llm_response.content
+
+                logger.debug(f"Relation selection response: {response_text[:300]}...")
+
+                json_match = re.search(r'\{[\s\S]*\}', response_text)
+                if not json_match:
+                    logger.warning("No valid JSON found in relation selection response")
+                    return RetrievedKnowledge(triples=[], entities=[])
+
+                json_str = json_match.group(0)
+                selection_result = json.loads(json_str)
+                selected_relations = selection_result.get('selected_relations', [])
             
             if not selected_relations:
-                logger.warning("No relations selected by LLM")
+                logger.warning("No relations selected")
                 return RetrievedKnowledge(triples=[], entities=[])
-            
-            logger.info(f"LLM selected {len(selected_relations)} relations")
+
+            if not provided_positions:
+                logger.info(f"LLM selected {len(selected_relations)} relations")
             
             # ステップ2 & 3: 各relationについてwebから情報を取得
             all_triples = []
@@ -997,6 +1020,7 @@ REQUIREMENTS:
                 4. Use specific entity names, locations, and descriptions based on actual facts
                 5. Do NOT create the target triple itself - only find supporting evidence from the body patterns
                 6. Avoid generic placeholders like [Person's Name], [City Name], etc. - use actual names
+                7. CRITICAL - Variable Unification: If the same variable (e.g., ?c, ?f) appears in MULTIPLE body patterns, you MUST use the SAME entity for ALL occurrences of that variable. This is called "variable unification" in logic programming. For example, if ?f appears in both "?b /location/location/contains ?f" and "?a /people/person/places_lived.../location ?f", both triples must use the exact same entity ID for ?f (e.g., both use "e1")
 
                 OUTPUT: Return valid JSON matching this schema:
                 {{

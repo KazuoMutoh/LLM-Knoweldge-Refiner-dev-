@@ -110,3 +110,22 @@ def save_json(path: str | Path, obj: dict) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
+
+
+def get_iteration_dir(base_output_path: str | Path, iteration: int) -> Path:
+    """Get the output directory for a given iteration.
+
+    This standardizes the layout as:
+        base_output_path/iter_{iteration}
+
+    Args:
+        base_output_path: Base directory for a run (e.g., experiments/20260111/v3_rule).
+        iteration: Iteration index (0, 1, 2, ...).
+
+    Returns:
+        Path: Path to the iteration directory.
+    """
+
+    if iteration < 0:
+        raise ValueError(f"iteration must be >= 0, got {iteration}")
+    return Path(base_output_path) / f"iter_{iteration}"

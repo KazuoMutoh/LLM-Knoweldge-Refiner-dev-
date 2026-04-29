@@ -176,19 +176,32 @@ def extract_rules_from_high_score_triples(kge:KnowledgeGraphEmbedding,
     # --------------------------------------------
     # k-hop囲い込みグラフを並列で抽出
     dict_triple_and_k_hop_subgraph = dict()
-    num_workers = min(30, multiprocessing.cpu_count())
-    logger.info(f"Extracting {k_neighbor}-hop enclosing subgraphs around target triples using {num_workers} workers...")
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-        
-        futures = [
-            executor.submit(get_related_triples, target_triple, all_triples, k_neighbor)
-            for target_triple in target_triples_with_high_score
-            ]
-        
-        for f in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
-            triples, target_triple = f.result()
+    # NOTE: Passing a large `all_triples` list to many worker processes can be very expensive
+    # due to pickling. When only a few target triples are selected, run sequentially.
+    max_workers_default = min(30, multiprocessing.cpu_count())
+    n_tasks = len(target_triples_with_high_score)
+    num_workers = min(max_workers_default, max(1, n_tasks))
+    logger.info(
+        f"Extracting {k_neighbor}-hop enclosing subgraphs around {n_tasks} target triples using {num_workers} workers..."
+    )
+
+    if n_tasks == 0:
+        logger.warning("No high-score target triples selected; AMIE+ input will be empty.")
+    elif num_workers <= 1:
+        for target_triple in tqdm(target_triples_with_high_score, total=n_tasks):
+            triples, _ = get_related_triples(target_triple, all_triples, k_neighbor)
             key = "\t".join(map(str, target_triple))
             dict_triple_and_k_hop_subgraph[key] = [list(triple) for triple in triples]
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = [
+                executor.submit(get_related_triples, target_triple, all_triples, k_neighbor)
+                for target_triple in target_triples_with_high_score
+            ]
+            for f in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
+                triples, target_triple = f.result()
+                key = "\t".join(map(str, target_triple))
+                dict_triple_and_k_hop_subgraph[key] = [list(triple) for triple in triples]
 
     # jsonで保存
     dir_rules = os.path.join(dir_working, f"rules_{str(uuid.uuid4())[:8]}")

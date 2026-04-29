@@ -1,0 +1,224 @@
+% ===================================================
+% comments for this document
+% ===================================================
+
+% ===================================================
+% meta
+% ===================================================
+% classes
+\documentclass{article}
+
+% packages
+\usepackage[margin=20truemm]{geometry} % for setting white space
+\usepackage{graphicx} % for images
+\usepackage{luatexja} % for japanese
+\usepackage{indentfirst} %最初の段落も字下げ
+\usepackage{comment} % for multiple line comment
+\usepackage{color} % for quotes
+\usepackage[most]{tcolorbox}
+
+% variables
+\def\imgewidth{15cm}
+
+% head
+\title{Brief Summary of Previous Studies \\ on Knowledge Graph Refine}
+\author{Kazuo MUTOH}
+\date{January 2024}
+
+% ===================================================
+% begin document
+% ===================================================
+\begin{document}
+
+\maketitle
+
+\newpage
+
+% --------------------------------------------------
+% Introduction
+% --------------------------------------------------
+\section{Introduction}
+
+Most of large scale knowledge graphs, such as DBpedia[add ref], 
+YAGO[add ref], Wikidata[add ref] and YAGO[add ref],  are 
+constructed from  various structured, semi-structured or unstructured 
+data sources. As they are often constructed automatically or 
+semi-automatically with statistical and linguistic methods, 
+there exist lots of erroneous, missing, outdated or conflict 
+knowledge in them.
+
+Thus various refinement methods for knowledge graph have been proposed, 
+which try to infer and add missing knowledge to the graphs\cite{paulheim_knowledge_2017},\cite{xue_knowledge_2022}. 
+Most of them are automatic methods. Some of them, however,
+tries to refine knowledge graph with human-in-the-loop (HITL)
+
+In this study, we concentrated on the refinement of the knowledge graph 
+using Human-in-the-Loop (HITL) and provided a concise review of prior research in this domain.
+
+\section{Categorization of knowledge graph refinement}
+
+Knowledge graph refine methods are categorized in various ways. 
+For this survey, the refine method are categorized in two aspects: 
+technologies used and goals. 
+
+The technologies used for the refine can be categorized 
+into several groups\cite{xue_knowledge_2022}:
+
+According to \cite{xue_knowledge_2022}, the technologies used for the refine can be categorized 
+into four groups:
+
+\begin{itemize}
+    \item Human-based, where knowledge graph refine are conducted manually 
+    with, for example, crowd sourcing. 
+    \item Statistics\&Learning-based, where statistics or machine learning methods 
+    are employed and refine knowledge graph automatically. 
+    \item Rule-based, where predefined rules or ones extracted from knowledge graph 
+    are used to refine knowledge graph automatically.
+    \item Hybrid, where human intelligence, statistical\&learning and rule based 
+    method are combined in some way.
+\end{itemize}
+
+In this study, we focus on hybrid methods where human intelligence is combined with statistical\&learning-based and/or rule-based.  In fact, many hybrid method using human intelligence are based on either statistical\&learning-based or rule-based, we categorize previous studies in those two.
+
+According to \cite{paulheim_knowledge_2017}, the goals of the refine can be categorized into two groups: 
+
+\begin{itemize}
+    \item Methods for completion, where missing knowledge is added to the graph. 
+    Many studies are conducted on adding missing "link" between entities in the graph, 
+    or link prediction. 
+    \item Methods for error detection, where erroneous knowledge are identified
+    and possibly removed or corrected.
+\end{itemize}
+
+\section{Statistical\&learning-based method}
+
+%Although, in some studies, features of entities in knowledge graph are handcrafted, recently, many studies use embedding for entities learned with machine learning as features of the entities. However, it is noted that, embedding learned by machine learning is not appropriate when knowledge graph contains lots of errors in it. It may be big problem especially for error detection of knowledge graph.
+
+%Error can be divided into random errors and systematic errors. (Consider, what kind of error will be occur when a large language model (LLM) is used. How to solve conflicting extraction result of knowledge graph.)
+
+%To apply active learning for (knowledge) graph refinement, it is important to take dependencies of entities represented by graph into acquisition function for active learning.  
+
+%Though calculating uncertainty is very important for active learning. there are various way to calculate uncertainty (knowledge) graph refine. Why don't you use ensemble approach to calculate uncertainty? In crowd sourcing, it should be a popular that answers from oracles disagree for each other. Why don't you regard even human as one of the anomaly detector and link predictor, and use ensemble approach to calculate uncertainty? For image classification task, an active learning which calculate uncertainty in ensemble approach is suggested. (It referred by many papers!!)
+
+\subsection{Error detection}
+
+For error detection with human-in-the-loop, most methods adopt active learning approach. In active learning, acquisition function important because it decides over all performance of the method. In most methods, uncertainty of machine learning model: classifier or anomaly detector for erroneous triples in knowledge graph is adopted as acquisition function. Although some method use hand crafted features for the model\cite{hao_outdated_2020}\cite{yao_typing_2021}\cite{buhl_conversation-driven_2023}, most method use graph embedding for them. In active learning, Because entities in knowledge graph are correlated highly for each other, it is necessary to take not only uncertainty of the model but also dependency of entities. To this end, some method\cite{ding_interactive_2019}\cite{meng_interactive_2021} use clustering method to group highly correlated entities to avoid highly correlated entities, which means less informative for active learning, are selected for query.
+
+Some methods focus on a specific type of errors. 
+
+For example, Hao, et al.\cite{hao_outdated_2020} focus to find outdated knowledge in the graph. In their proposed method, features, such as historical update frequency and time of existence for entities in the knowledge graph, is constructed and labels representing if entities are outdated or not are added to some of the entities. Then, a binary classifier is trained based the feature and labels. After that, the binary classifier is used to compute a likelihood of an entities in the knowledge graph to be outdated. The proposed method selects entities with having high likelihood and large out-degree and ask human whether they are indeed outdated. Based on the feedback from human, the proposed method detect more outdated facts with logical rules. The detected outdated fact are fed back to train the classifier. 
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_outdated_fact_detection.png}
+\caption{Overview of outdated knowledge detection\cite{hao_outdated_2020}}
+\label{fig:hao_outdated_2020l}
+\end{figure}
+
+Yao, et al. \cite{yao_typing_2021} focus to find typing error (class assertion) of entities knowledge graph. They introduce a noise model which relates entity and its probability of having a typing label \(y_i\). More precisely, they consider the probability of the entity \(e\) having type \(z_i\) based an embedding of the entity and the probability of the type \(z_i\) labeled as \(y_i\). The embedding are calculated from labels and comments of the target entity and adjacent node. Then, the two probabilistic model are combined to relate \(e\) and \(y_i\). They further extend this noise model to semi-supervised one which learn simultaneously from entities with noisy typing labels and those with human-verified gold labels. Active learning is employed to train the  semi-supervised model in which uncertainty sampling and error rate reduction are used as sampling strategy.
+
+Some method are proposed for more general purpose\cite{ge_kgclean_2020}\cite{chang_gadal_2022}\cite{dong_active_2023}. 
+
+Ge, et al. \cite{ge_kgclean_2020} proposed a knowledge graph cleaning framework called KGClean. In this framework, first, embedding of entities in the knowledge graph are calculate. For calculation of the embedding, they propose, an embedding method specialized  for detecting error in knowledge graph called TransGAT which uses information from the entities' neighbors as well as considering the interactions between entities and relationships. After the calculation of the embedding, a model which calculates a probability of a triplet being noisy (not correct) are trained based on the embedding and labels. They use TextCNN [add ref] for a model for the classification. Labeling whether triples are noisy or not is very costly, thus, they adopt an active learning approach to train the classifier.They use Entropy Sampling for a query selection of the active learning. With trained classifier, the probability of being noisy is calculated for each triple in knowledge graph and triples having more probability of being noisy than that of being not noisy are detected erroneous triples. They further proposed a correction method for the erroneous triples. The proposed model evaluate candidates of correction for the erroneous triples based on the causality of the triple calculated by the embedding model of TransGAT and the influence of the triplet its neighbors. 
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_KGClean.png}
+\caption{Overview of KGClean\cite{ge_kgclean_2020}}
+\label{fig:hao_outdated_2020l}
+\end{figure}
+
+Dong, et al. \cite{dong_active_2023} proposed a active ensemble learning for knowledge graph error detection called KAEL. In KAEL, existing error detection methods, such as CKRL [add ref] and CompLex [add ref], are used as ensemble to detect error. In KAEL, firstly, candidates of suspicious triples are listed by base error detectors. Then, they are selected to query to Oracle. Because a feature space of each base error detector and a evaluation method of being error are different for each other, a result of each base detector cannot be compared. Therefore, they introduce a linear classification model to calculate probability of being error based on a common feature space calculated by TransE [add ref]. This classification model is created for each error detector. The classification model is initialized by majority voting; triples which all detectors agree being error are used to train the classification model. Then, for each iteration of active learning, triples a prediction error probability of triples and uncertainty of the prediction is calculated with and a triple having high probability and uncertainty is selected for query to oracle. After obtaining feedback from the oracle, a classification model corresponding to the selected triple is updated based on the feedback.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_KEAL.png}
+\caption{Overview of KAEL\cite{hao_outdated_2020}}
+\label{fig:dong_active_2023}
+\end{figure}
+
+Knowledge graph can be also modeled as heterogeneous attributed graph where attributes, which are often vectors, are assigned to node and/or edge of graph. For error detection of attributed graph, lots of method are proposed\cite{ma_comprehensive_2021}. However there are few method for heterogeneous attributed graph with human-in-the-loop approach. 
+
+Ding, et al. \cite{ding_interactive_2019} propose an interactive anomaly detection for homogeneous attributed graph. In the proposed method, a contextual multi-armed bandit [add ref] is used to select a node in the graph for query to oracle. To formulate the anomaly detection problem of attributed graph as K-armed contextual bandit framework, they group nodes in to a set of K different clusters based on their attributes represented as vectors. And they assume that the nodes within same cluster can be seen as drawn from the same distribution. Based on this assumption, a reward for the bandit problem is calculated from an attribute vector of a node and its neighbor nodes and a cluster the node belongs to. Same approach is used for a temporal (dynamic) homogeneous attributed graph\cite{meng_interactive_2021}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_interactive_anomaly_detection_for_attributed_network.png}
+\caption{Overview of interactive anomaly detection on attributed network\cite{ding_interactive_2019}}
+\label{fig:dong_active_2023}
+\end{figure}
+
+In \cite{chang_multitask_2024}, they propose an anomaly detection for homogeneous attributed graph with multitask active learning, called MINTIGATE. They focus on the fact that ground truth label for anomaly detection is rare, however, indirect supervision signals from other tasks, such as node classification, are relatively abundant. In the proposed method, they assume that node classification labels are available. They construct a node classifier and an anomaly score predictor which is a binary classifier on shared graph embedding space learned by graph convolution network (GCN) [add ref]. And center nodes of clusters, which are informative, i.e., have high classification entropy and low anomaly score, or have low classification entropy and high anomaly score, are selected for query 
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_MITIGATE.png}
+\caption{Overview of MITIGATE\cite{chang_multitask_2024}}
+\label{fig:chang_multitask_2024}
+\end{figure}
+
+\subsection{Completion}
+For completion, same as error detection, most methods adopt active learning approach. 
+and use uncertainly of link prediction model as acquisition function. As well as error detection, many method use graph embedding for features for the link perdition model. To avoid to select highly correlated entities, some methods adopt clustering techniques same as methods in error detection. Some methods quantify effect of entities for quality improvement of the link prediction when ground truth labels for the entities are given, considering structure of graph.
+
+Identifying same entities in knowledge graph or entity resolution, which is heavily investigated topic in researches about knowledge graph, can be regarded as completion problem in which find missing "exactMatch" link between same entities. Some studies try to solve this problem adopting human-in-the-loop approach.
+
+For example, Chen, et al. \cite{chen_enabling_2018} propose a human and machine cooperation framework called HUMO. The proposed method divides entity resolution workload between human and machine to minimize human workload while satisfying predefined quality (recall and precision) is proposed.It is assumed that similarities having internal \([0,1]\) are given by other method like support vector machine (SVM). Based on this similarity, the proposed assigns entity pairs, which is difficult to be judged same or not, to human. Otherwise automatically judges.To guarantee the quality, it is important to estimate actual match proportion of entity pairs which are not assigned to human. In this paper, three method are proposed: base line, sample-based and hybrid. 
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_HUMO.png}
+\caption{Overview of interactive anomaly detection on attributed network\cite{chen_enabling_2018}}
+\label{fig:chen_enabling_2018}
+\end{figure}
+
+In \cite{liu_activeea_2021}, an entity alignment method for knowledge graph called ActiveEA is proposed. In the proposed method, active learning is employed in conjunction with existing entity alignment methods that use neural networks, such as BootEA [add ref], Alinet [add ref], and RDGCN [add ref]. For active learning, two types of acquisition functions are combined. The first one is structure-aware uncertainty, which consists of two factors. One factor accounts for the uncertainty of neighboring entities of a given entity, while the other factor accounts for the uncertainty of the entity itself. The second one is bachelor recognizer which calculates how likely the entity is a bachelor. "Bachelor" means an entity having no matching entities. The two types of acquisition functions are calculated for each entity in knowledge graph and multiplied to calculate a final acquisition function for active learning.
+
+In \cite{huang_deep_2023}, an active alignment method for knowledge graph called DAAKG is proposed. In this proposed method, not only entities but also relations and classes are aligned. In this proposed method, firstly, embedding of entities are calculated by existing method such as TransE[add ref]. Then, based on the calculated embedding, alignment models for elements: entities, classes and relations are computed. To select a pair of element to be asked oracle if they are same or not, they estimate "inference power". The inference power means how likely a pair of elements are judged as same based on newly-labeled pairs. Because the inference power cannot be calculated until the oracle adds labels to element pairs, an expected inference power is predicted based on matching probabilities of element pairs calculated by the alignment model. Pairs of elements are selected such that the expected inference power is maximized. 
+
+In \cite{zhou_attent_2021}, a method for active entity resolution in homogeneous attributed graphs is proposed. This method defines a similarity vector between two graphs that are to be aligned. The similarity vector of nodes across the two graphs is calculated based on the consistencies between the graphs and an alignment preference matrix. These consistencies are evaluated with respect to the topology, node attributes, and edge attributes. The alignment preference matrix represents prior knowledge of the similarity between two nodes across the two graphs. A utility function is defined as either the squared \(L_2\) norm or the information entropy of the similarity vector. The influence of a node on the utility function is defined as the differential of the utility function with respect to an element in the alignment preference matrix corresponding to the node. Queries to the oracle are selected to maximize this influence.(In this method, a "bachelor" node is not considered.)
+
+In \cite{malmi_active_2017}, a method for active entity solution for plain graphs, which only has edge and nodes, is proposed. In this method, the entity resolution problems are formulated as maximum-weight bipartite matching problem where the weight is calculated based on similarities nodes between graphs to be aligned. Based on the weight, matching pairs of entities are sampled. Using those sample, a certainty value of each node is calculated as a maximum probability of matching. Intuitively, the certainty value is high when there is only one candidate entity in the target graph corresponding to one in the source graph. Entities having low certainty value are selected for query to oracle. 
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\imgewidth]{images/overview_of_matching_based_approach.png}
+\caption{Overview of matching based network alignment\cite{malmi_active_2017}}
+\label{fig:chen_enabling_2018}
+\end{figure}
+
+For general link prediction in knowledge graph, there are few studies adopting human-in-the-loop 
+approach\cite{ostapuk_activelink_2019}\cite{chen_alpine_2021}\cite{sun2022asrc}.
+
+In \cite{ostapuk_activelink_2019}, a deep active learning for link prediction in knowledge graph is proposed. In the proposed method, a model uncertainty of link prediction model and the redundancies of triples stemming from knowledge graph structure are used to select triples to be queried. More specifically, to reduce redundancies, the triples are clustered based on their embedding learned by TransE[add ref] and the clusters which are not similar to training data (triples that have been selected for query) are selected. In selected cluster, a triple to which corresponding model uncertainties is the largest is selected for query. The model uncertainty for given triple are calculated by Bayesian model which are converted from existing link prediction method with softmax function and Monte Carlo integration over a a prior distribution of model parameters. 
+
+
+\section{Rule-based method}
+
+Rules such as predicate logic rules can be applied to both error detection and completion of knowledge graph. Moreover, rules can be interpreted easily by human, they are also used for explanation of error and completion\cite{ahmadi_explainable_2019}\cite{gad-elrab_exfakt_2019}\cite{amador2023geni}. Therefore, though rule-based method has a long history, rule based method still have important position for knowledge graph refine. For generating rules, manual writing is the most direct way, however, it is difficult for humans to exhaust all. Therefore, there are lots of studies about mining rules which frequently appear in knowledge graph. Although there is a natural connection between rules and humans that rules can be created and examined by human experts, this interaction is long neglected in researches\cite{xue_knowledge_2022}.
+
+In \cite{loster_few-shot_2021}, a method called COLT, which assesses the quality of rules with human, are proposed. As mentioned before, rules are beneficial to correct and complete knowledge graph, however, rules mined automatically from knowledge graph are not always true. Therefore, the quality of the rules should be assessed before they are applied to refinement of knowledge graph. To calculate a quality of the rules, the true facts are needed. However, there are errors and missing information in knowledge graph, thus, the quality of the rules cannot be calculated from knowledge graph. To solve this problem, in this proposed method, a part of the true facts are given from human interactively and, based on the obtained true facts, a classifier to judge if a rule is true or not is trained or updated.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=10cm]{images/overview_of_COLT.png}
+\caption{Overview COLT\cite{loster_few-shot_2021}}
+\label{fig:chen_enabling_2018}
+\end{figure}
+
+In \cite{paulheim_serving_2015}, a method for detecting systematic errors in ontologies is proposed. During the construction of a knowledge graph, both random and systematic errors may occur. The proposed method focuses on identifying these systematic errors. To achieve this, a reasoner is employed to detect errors in relation to the ontologies. The detected errors are then clustered based on the axioms of the ontologies that the entities associated with the errors violate. This ensures that errors within the same cluster share the same systematic errors. Subsequently, each cluster is examined to identify a strategy for correcting the systematic error, such as "alignment tuning", for each cluster. 
+
+In \cite{pellissier_tanon_learning_2019}, a method for mining correction rules from editing history is proposed. In this proposed method, constraint violations and corresponding correction by human are learned from editing history of wikidata, which has more than 700 millions edits. The correction rules could be used for detecting errors or missing information and correcting automatically.   
+
+% --------------------------------------------------
+% Reference
+% --------------------------------------------------
+\newpage
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+% ===================================================
+% end document
+% ===================================================
+
+\end{document}

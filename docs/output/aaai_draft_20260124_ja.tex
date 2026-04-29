@@ -1,0 +1,117 @@
+% AAAI draft (Japanese, internal)
+% Created: 2026-01-24
+% Note: This is a content draft. Later, switch to AAAI official style (aaaiXX.sty) and translate to English.
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=25truemm]{geometry}
+\usepackage{luatexja}
+\usepackage{indentfirst}
+\usepackage{hyperref}
+
+\title{ルール組（arm）選択による外部知識統合型KGリファイン：背景・課題・目的（草稿）}
+\author{(匿名化予定)}
+\date{2026-01-24}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+知識グラフ（KG）は多様な下流タスクの基盤である一方で、欠損・誤り・陳腐化・矛盾を含む。
+既存のリンク予測や異常検知は主にKG内部の構造に依存するため、情報が不足した状況では十分に機能しないことがある。
+本研究は、外部情報源（ローカル候補集合およびWeb検索）から根拠（evidence）を収集し、Hornルールに基づく候補生成と、arm（複数ルールの組）を単位としたバンディット選択により、計算効率と品質制御を両立しながらKGを段階的に改善する枠組みを目指す。
+本稿はまず背景・課題・目的を整理する。
+\end{abstract}
+
+\section{背景}
+大規模知識グラフ（例：DBpedia、YAGO、Wikidata等）は、多様な構造化・半構造化・非構造化データから（半）自動構築されるため、欠損（missing）、誤り（erroneous）、陳腐化（outdated）、矛盾（conflict）といった品質問題を内在しやすい。
+これらの問題は、知識グラフを用いた検索・推薦・推論・対話等の性能や信頼性を直接左右する。
+
+KGの品質改善（refinement）に対しては、(i) 欠損補完（completion；リンク予測を含む）、(ii) 誤り検出・訂正（error detection/correction）という2つの主要目標が整理されている（例：サーベイ\cite{paulheim_knowledge_2017,xue_knowledge_2022}）。
+特にHuman-in-the-Loop（HITL）型の手法では、限られた人的・計算資源の下で、どの候補を優先的に検証・追加すべきか（探索と活用の配分）が重要となる。
+
+一方で、統計・学習ベース（埋め込み、GNN等）とルールベース（論理規則、マイニング規則等）の双方に長所があり、ハイブリッド型の設計が有望である。
+ルールは人間にとって解釈しやすく、候補生成や説明に向くが、ルールの品質（真偽・適用条件）や、候補の受理判定、過剰な候補生成の抑制が課題となる。
+
+\section{課題設定と技術的課題}
+本研究が扱う問題は、既存KG $G$ と、ターゲット関係 $r_*$（例：\texttt{/people/person/nationality} のような機能的／1対1寄りの関係）に対して、外部情報源から根拠を収集し、KGへ段階的にトリプルを追加することで、最終的なリンク予測性能（Hits@k、MRR等）およびターゲット関係の品質を改善することである。
+
+このとき、実運用上クリティカルな課題は次の通りである。
+
+\subsection{反復内のKGE再学習・再スコアリングの計算コスト}
+「追加→再学習→再スコアリング→次の追加」を反復する素朴な設計は、KGEの学習・評価コストが支配的となり、探索回数（反復数）を増やしにくい。
+本プロジェクトでは、反復中に埋め込みスコア／ベクトルを都度計算しない方針（proxy指標による評価）を明確化している（設計概要：\cite{rule_combo_bandit_overview,rule_arm_pipeline_impl}）。
+
+\subsection{外部由来トリプル追加の副作用（ノイズ化）}
+外部情報源から得たトリプルを無批判に追加すると、埋め込みモデルにとってノイズとなり、再学習後にターゲットスコアやHits/MRRが悪化し得ることが観測されている（設計ドキュメント内の実験知見）。
+したがって、追加候補の品質を制御し、矛盾や水増しを抑える仕組みが必要である。
+
+\subsection{候補受理のための代理指標：witnessの水増しと矛盾制御}
+反復内でKGEを回さない場合、候補の良否を代替的に測る必要がある。
+本プロジェクトでは、(i) witness（ルールbodyを満たす置換数・支持構造）と、(ii) 機能的矛盾（functional conflict）の2軸を中心に代理報酬を定義する（\cite{rule_combo_bandit_overview,rule_arm_pipeline_impl}）。
+しかしwitnessは、ハブ関係やKGEで表現しにくい関係により水増しされる危険がある。
+この点に対し、relation priors $X_r$（関係ごとのKGE-friendly度合い）でwitness寄与を重み付けする設計が導入されている（\cite{rule_relation_priors}）。
+
+\subsection{探索と活用：ルール単体ではなく「ルール組」を選ぶ必要}
+単一ルールは局所的な偏りや脆弱性を持ち得るため、複数ルールの組み合わせ（arm）を選択単位とし、どの組が有効かを探索することが重要である。
+本プロジェクトのv3-combo-banditでは、arm（ルールの集合または順序列）を腕として扱い、UCB/ε-greedy/LLM-policy等で選択する枠組みを採用する（\cite{rule_combo_bandit_overview}）。
+
+\subsection{新規エンティティ導入と疎結合化}
+外部由来evidenceが新規エンティティを導入すると、KG内で孤立しやすく学習に不利になる。
+そのため候補集合からincident triplesを追加して結合性を補う拡張がある一方で、追加数が増えノイズ源にもなり得る。
+本プロジェクトでは、incident追加をON/OFFおよび上限で制御可能とし、タスク・モデルに応じたA/Bを推奨している（\cite{rule_arm_pipeline_impl}）。
+
+\subsection{テキスト属性を用いたKGE安定化（TAKG / KG-FIT）}
+追加トリプルによる局所的過制約やスコア悪化を緩和するため、テキスト埋め込み（固定）とseed階層（事前計算）を用いた正則化をKGEへ統合するTAKG前提のKG-FITバックエンドを採用する（\cite{rule_takg_kgfit}）。
+これは「LLM自体を微調整する」のではなく、「固定テキスト埋め込みをアンカーとしてKGEを安定化する」方針であり、外部知識統合と親和的である。
+
+\section{目的}
+以上を踏まえ、本研究の目的は次の通りである。
+
+\begin{enumerate}
+  \item 外部情報源（ローカル候補集合／Web検索）から得られる根拠（evidence）を、Hornルールに基づき体系的に取り込み、ターゲット関係 $r_*$ に関する知識の欠損を補う。
+  \item 反復内でKGE再学習・再スコアリングを行わない制約下で、witnessと矛盾（conflict）に基づく代理指標を設計し、追加品質を制御する。
+  \item ルール単体ではなく、複数ルールの組（arm）を意思決定単位として、バンディット戦略により探索と活用をバランスさせ、限られた反復回数で有効な取得方策を見つける。
+  \item witness水増し問題に対して、relation priors $X_r$ を用いた重み付けにより、KGE-friendlyな支持構造を優先する。
+  \item 追加トリプルが最終KGEに与える悪影響を抑えるため、TAKG（KG-FIT）によりテキスト属性をアンカーとして組み込み、再学習後の性能劣化リスクを軽減する。
+\end{enumerate}
+
+\section{本研究の貢献（導入時点の整理）}
+本稿（および続く実験部）で主張すべき貢献は、現時点では次のように整理できる。
+
+\begin{itemize}
+  \item \textbf{Arm-driven refinement}: Hornルールの\emph{組}（arm）を選択単位とする反復的KGリファイン枠組みを提示し、取得方策を履歴駆動で最適化する。
+  \item \textbf{Proxy reward design}: 反復内でKGEを回さない制約の下で、witnessと機能的矛盾に基づく代理報酬設計と、store-only仮説（ターゲット関係の安易な注入を避ける）運用を統合する。
+  \item \textbf{Witness reweighting with relation priors}: relation priors $X_r$ をオフライン算出し、witness寄与を重み付けすることで、ハブ関係・非整合関係による水増しを抑える。
+  \item \textbf{TAKG-aware KGE backend}: テキスト埋め込みとseed階層正則化を統合するKG-FITを採用し、外部由来トリプル追加に対するKGEの頑健性を高める。
+\end{itemize}
+
+\section*{今後（この草稿の続きで書く章のメモ）}
+\begin{itemize}
+  \item 関連研究：HITLによるKG completion/error detection、ルールマイニング、バンディット／アクティブラーニング、TAKG・KG-FIT。
+  \item 手法：arm生成、選択（UCB/LLM-policy）、evidence取得（local/web）、代理評価（witness/矛盾）、KG更新、最終再学習・評価。
+  \item 実験：FB15k-237等で nationality/place\_of\_birth/profession を対象に、UCB vs random 等を比較。
+\end{itemize}
+
+\section*{参照（この草稿が依拠する内部ドキュメント）}
+\begin{itemize}
+  \item v3-combo-bandit概要：\texttt{docs/rules/RULE-20260111-COMBO_BANDIT_OVERVIEW-001.md}
+  \item arm pipeline仕様：\texttt{docs/rules/RULE-20260117-ARM_PIPELINE_IMPL-001.md}
+  \item relation priors仕様：\texttt{docs/rules/RULE-20260118-RELATION_PRIORS-001.md}
+  \item KG-FIT（TAKG）仕様：\texttt{docs/rules/RULE-20260119-TAKG_KGFIT-001.md}
+  \item 研究の狙い：\texttt{docs/external/研究の狙い.md}
+  \item 先行研究サーベイ草稿：\texttt{docs/external/先行研究調査まとめ_2023.tex}
+\end{itemize}
+
+% --- Placeholder bibliography ---
+% Later: replace with AAAI bib style and a proper .bib file.
+\begin{thebibliography}{9}
+\bibitem{paulheim_knowledge_2017} Heiko Paulheim. Knowledge Graph Refinement: A Survey of Approaches and Evaluation Methods. 2017.
+\bibitem{xue_knowledge_2022} (Survey) Knowledge Graph Refinement / Cleaning survey. 2022.
+\bibitem{rule_combo_bandit_overview} RULE-20260111-COMBO_BANDIT_OVERVIEW-001. 2026.
+\bibitem{rule_arm_pipeline_impl} RULE-20260117-ARM_PIPELINE_IMPL-001. 2026.
+\bibitem{rule_relation_priors} RULE-20260118-RELATION_PRIORS-001. 2026.
+\bibitem{rule_takg_kgfit} RULE-20260119-TAKG_KGFIT-001. 2026.
+\end{thebibliography}
+
+\end{document}

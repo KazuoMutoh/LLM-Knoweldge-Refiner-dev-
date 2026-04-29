@@ -145,6 +145,61 @@ docker-compose -f docker-compose-gpu.yml up
 
 ---
 
+## KG-FIT（TAKG対応KGE）の最短手順
+
+KG-FITバックエンドは、事前計算した「テキスト埋め込み」と「seed階層（クラスタ＋近傍クラスタ）」を用いて、KGE学習に正則化（anchor/cohesion/separation）を追加する。
+学習時に外部APIを叩かない（事前計算のみ OpenAI embeddings を利用）前提で運用する。
+
+事前条件:
+- データセットディレクトリ（`<DATASET_DIR>`）に `train.txt`（TSV: head, relation, tail）がある
+- テキスト付与用に `entity2text.txt`（推奨）と `entity2textlong.txt`（任意）がある
+- `OPENAI_API_KEY` が設定済み（事前計算で必要）
+
+### 1) テキスト埋め込みの事前計算（`.cache/kgfit/` を生成）
+
+```bash
+python3 scripts/compute_kgfit_text_embeddings.py \
+  --dir_triples <DATASET_DIR> \
+  --model text-embedding-3-small \
+  --dtype float32 \
+  --batch_size 128
+```
+
+生成物（既定）:
+- `<DATASET_DIR>/.cache/kgfit/entity_name_embeddings.npy`
+- `<DATASET_DIR>/.cache/kgfit/entity_desc_embeddings.npy`
+- `<DATASET_DIR>/.cache/kgfit/entity_embedding_meta.json`
+
+### 2) seed階層の構築（クラスタ中心＋近傍クラスタ）
+
+```bash
+python3 scripts/build_kgfit_seed_hierarchy.py \
+  --dir_triples <DATASET_DIR> \
+  --reshape_strategy full \
+  --neighbor_k 5
+```
+
+生成物（既定）:
+- `<DATASET_DIR>/.cache/kgfit/hierarchy_seed.json`
+- `<DATASET_DIR>/.cache/kgfit/cluster_embeddings.npy`
+- `<DATASET_DIR>/.cache/kgfit/neighbor_clusters.json`
+
+### 3) KG-FITバックエンドでKGE学習
+
+`config_embeddings_kgfit.json` は、`<DATASET_DIR>/.cache/kgfit/` を前提にした汎用の学習設定例。
+
+```bash
+python3 scripts/train_initial_kge.py \
+  --dir_triples <DATASET_DIR> \
+  --output_dir <MODEL_OUT_DIR> \
+  --embedding_config config_embeddings_kgfit.json \
+  --num_epochs 100
+```
+
+仕様（再実装の根拠）:
+- KG-FITバックエンド標準: [docs/rules/RULE-20260119-TAKG_KGFIT-001.md](docs/rules/RULE-20260119-TAKG_KGFIT-001.md)
+- 正則化/近傍K運用: [docs/rules/RULE-20260119-KGFIT_REGULARIZER_SPEEDUP-001.md](docs/rules/RULE-20260119-KGFIT_REGULARIZER_SPEEDUP-001.md)
+
 ## main.py - メイン実行スクリプト
 
 ### 処理の概要
@@ -474,6 +529,10 @@ evaluation_record = analyzer.create_evaluation_record(
   }
 }
 ```
+
+KG-FITバックエンドを使う場合:
+- `embedding_backend: "kgfit"` と `kgfit` ブロックを含む設定を使う
+- 例: [config_embeddings_kgfit.json](config_embeddings_kgfit.json), [config_embeddings_kgfit_fb15k237.json](config_embeddings_kgfit_fb15k237.json)
 
 ---
 
@@ -861,6 +920,7 @@ $$
 | `--remove_preference` | str | | `both` | 削除方向（head/tail/both） |
 | `--drop_ratio` | float | | `0.7` | 近傍の削除率 [0, 1] |
 | `--include_target` | bool | | `true` | 選択エンティティのターゲットリレーションも削除するか |
+| `--remove_target_incidents` | bool | | `false` | `true`の場合、近傍ではなく**ターゲットエンティティ自身**にincidentなトリプルを削除（ただしtarget_triplesは保持） |
 | `--seed` | int | | `42` | 乱数シード |
 
 #### 主要関数

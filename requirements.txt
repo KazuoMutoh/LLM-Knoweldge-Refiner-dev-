@@ -38,3 +38,8 @@ tiktoken>=0.5.0,<0.6.0
 rank-bm25>=0.2.2,<0.3.0
 pydantic>=2.0,<3.0
 tqdm>=4.65.0,<5.0
+
+# SimKGC (text-based KGC)
+transformers==4.15.0
+tokenizers<0.13.0
+sentencepiece

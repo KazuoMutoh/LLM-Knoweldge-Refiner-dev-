@@ -1,0 +1,26 @@
+{
+  "model":"transe",
+  "model_kwargs": {
+    "embedding_dim": 64,
+    "scoring_fct_norm": 1
+  },
+  "loss": "CrossEntropyLoss",
+  "training_loop": "lcwa",
+  "stopper": "early",
+  "stopper_kwargs": {
+    "frequency": 5,
+    "patience": 5,
+    "relative_delta": 0.01
+  },
+  "optimizer": "adam",
+  "optimizer_kwargs": {
+    "lr": 0.0016608460884079603,
+    "weight_decay": 0.0
+  },
+  "training_kwargs": {
+    "batch_size": 256,
+    "label_smoothing": 0.717650072390557
+  },
+  "evaluator": "RankBasedEvaluator",
+  "random_seed": 42
+}
