@@ -124,10 +124,26 @@ cd <repository-name>
 
 # 依存パッケージのインストール
 pip install -r requirements.txt
-
-# OpenAI API Keyの設定
-export OPENAI_API_KEY="your-api-key-here"
 ```
+
+### 環境変数の設定
+
+本プロジェクトは機密情報を環境変数で管理します。実行前に以下の変数を設定してください。
+
+| 変数名 | 必須 | 説明 |
+|---|---|---|
+| `OPENAI_API_KEY` | 必須 | OpenAI APIキー。GPT-4o（ルール生成・選択）、Embeddings（KG検索）、Web Search（外部情報取得）に使用。 |
+
+```bash
+# シェルで設定する場合
+export OPENAI_API_KEY="sk-..."
+
+# .envファイルで管理する場合（dotenvなどを使用）
+echo 'OPENAI_API_KEY=sk-...' > .env
+```
+
+> **注意**: `settings.py` は `os.getenv("OPENAI_API_KEY", "")` で環境変数から読み込みます。  
+> APIキーをソースコードに直接記述しないでください。
 
 ### Dockerを使用する場合
 

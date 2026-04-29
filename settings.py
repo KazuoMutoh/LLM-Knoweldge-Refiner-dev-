@@ -1,0 +1,4 @@
+import os
+
+PATH_AMIE_JAR = '/app/bin/amie3.5.jar'
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
